@@ -16,7 +16,7 @@ function roomApiErrorMessage(error: { message: string } | null, data: RoomApiRes
   }
   const msg = error?.message ?? "Room API request failed";
   if (msg.includes("Failed to send a request to the Edge Function")) {
-    return "Room API unreachable: deploy the `room-api` Edge Function to Supabase, confirm Vercel has VITE_SUPABASE_URL (base URL only) and VITE_SUPABASE_ANON_KEY, and redeploy the function after setting verify_jwt = false for room-api.";
+    return `Room API unreachable: deploy the \`room-api\` Edge Function to Supabase, confirm Vercel has VITE_SUPABASE_URL (base URL only) and VITE_SUPABASE_ANON_KEY, and redeploy the function after setting verify_jwt = false for room-api. SDK detail: ${msg}`;
   }
   return msg;
 }
