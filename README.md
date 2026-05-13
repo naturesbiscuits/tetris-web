@@ -69,3 +69,21 @@ npm run dev
 npm run typecheck
 npm run build
 ```
+
+## Railway Deployment
+
+Deploy this as two Railway services:
+
+1. Frontend service
+   Build command: `npm run build --workspace=@tetris/client`
+   Start command: `npm run start --workspace=@tetris/client`
+
+2. Backend service
+   Build command: `npm run build --workspace=@tetris/server`
+   Start command: `npm run start --workspace=@tetris/server`
+
+Set this environment variable on the frontend service:
+
+```bash
+VITE_SERVER_URL=https://your-backend-service.up.railway.app
+```
