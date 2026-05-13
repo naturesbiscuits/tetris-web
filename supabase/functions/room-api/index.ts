@@ -46,6 +46,10 @@ function normalizeNickname(nickname?: string): string {
   return `${prefix}_${Math.floor(100 + Math.random() * 9900)}`;
 }
 
+function isUniqueNicknameViolation(error: { code?: string; message?: string }): boolean {
+  return error.code === "23505" || (error.message?.includes("multiplayer_room_players_room_nickname_unique") ?? false);
+}
+
 function randomRoomCode(): string {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   let out = "";
@@ -149,7 +153,12 @@ async function joinRoom(sessionId: string, nickname?: string, roomCode?: string)
       nickname: profile.nickname,
       is_host: false
     });
-    if (insertError) throw insertError;
+    if (insertError) {
+      if (isUniqueNicknameViolation(insertError)) {
+        throw new Error("That name is already taken in this room");
+      }
+      throw insertError;
+    }
   }
 
   const nextStatus: RoomStatus = snapshot.players.length + (existingPlayer ? 0 : 1) >= 2 ? "running" : snapshot.status;
