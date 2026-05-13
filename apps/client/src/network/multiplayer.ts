@@ -81,6 +81,7 @@ export async function getRoom(profile: ClientProfile, roomCode: string): Promise
   if (error) {
     throw new Error(roomApiErrorMessage(error, data));
   }
+  return data?.room ?? null;
 }
 
 export async function reportGameOver(profile: ClientProfile, roomCode: string): Promise<string | null> {
