@@ -1,0 +1,21 @@
+{
+  "name": "distributed-tetris-web",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "predev": "npm run build -w @tetris/core",
+    "dev": "concurrently \"npm run dev -w @tetris/server\" \"npm run dev -w @tetris/client\"",
+    "dev:client": "npm run dev -w @tetris/client",
+    "dev:server": "npm run dev -w @tetris/server",
+    "build": "npm run build --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2",
+    "typescript": "^5.8.3"
+  }
+}
