@@ -11,6 +11,7 @@
     "dev": "concurrently \"npm run dev -w @tetris/server\" \"npm run dev -w @tetris/client\"",
     "dev:client": "npm run dev -w @tetris/client",
     "dev:server": "npm run dev -w @tetris/server",
+    "build:vercel": "npm run build -w @tetris/core && npm run build -w @tetris/client",
     "build": "npm run build --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present"
   },
