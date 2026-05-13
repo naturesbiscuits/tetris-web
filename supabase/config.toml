@@ -377,6 +377,11 @@ inspector_port = 8083
 # The Deno major version to use.
 deno_version = 2
 
+# Allow `supabase.functions.invoke("room-api")` from the browser without a logged-in Supabase Auth user JWT.
+# The function still uses the service role server-side; validate inputs inside the function.
+[functions.room-api]
+verify_jwt = false
+
 # [edge_runtime.secrets]
 # secret_key = "env(SECRET_VALUE)"
 
