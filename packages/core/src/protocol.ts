@@ -7,6 +7,7 @@ export interface RoomPlayer {
   id: string;
   nickname: string;
   isHost: boolean;
+  connected: boolean;
 }
 
 export interface RoomSnapshot {
@@ -37,25 +38,22 @@ export interface MultiplayerEventPacket {
   winnerId?: string | null;
 }
 
-export interface ServerToClientEvents {
-  profile_ready: (profile: ClientProfile) => void;
-  room_created: (room: RoomSnapshot) => void;
-  room_joined: (room: RoomSnapshot) => void;
-  player_joined: (room: RoomSnapshot) => void;
-  player_disconnected: (room: RoomSnapshot) => void;
-  start_match: (payload: { roomCode: string; players: RoomPlayer[] }) => void;
-  multiplayer_event: (payload: MultiplayerEventPacket) => void;
-  game_over: (payload: { winnerId: string | null }) => void;
-  winner_declared: (payload: { winnerId: string | null }) => void;
-  error_message: (payload: { message: string }) => void;
+export interface RoomApiRequest {
+  action: "ensure_profile" | "create_room" | "join_room" | "leave_room" | "report_game_over" | "get_room";
+  sessionId: string;
+  nickname?: string;
+  roomCode?: string;
 }
 
-export interface ClientToServerEvents {
-  register_profile: (payload: { sessionId?: string; nickname?: string }) => void;
-  create_room: () => void;
-  join_room: (payload: { roomCode: string }) => void;
-  start_match: () => void;
-  multiplayer_event: (payload: Omit<MultiplayerEventPacket, "roomCode" | "playerId">) => void;
-  report_game_over: () => void;
-  leave_room: () => void;
+export interface RoomApiResponse {
+  profile?: ClientProfile;
+  room?: RoomSnapshot | null;
+  winnerId?: string | null;
+  error?: string;
+}
+
+export interface PresencePlayerState {
+  sessionId: string;
+  nickname: string;
+  roomCode: string;
 }

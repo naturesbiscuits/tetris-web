@@ -1,0 +1,2 @@
+[functions.room-api]
+verify_jwt = false

@@ -1,91 +1,114 @@
-# Distributed Multiplayer Tetris (Web Migration)
+# Distributed Multiplayer Tetris
 
-Web-based migration of a distributed multiplayer Tetris system using:
+Web-based Distributed Tetris using:
 
 - TypeScript
 - React
 - Phaser.js
-- Node.js
-- Socket.IO
+- Supabase Realtime
+- Supabase Edge Functions
+- Vercel frontend hosting
 
-## Architecture
+## Current Architecture
 
 ```text
 Frontend (apps/client)
-├── React UI + Lobby/Menu
-├── Phaser Rendering Pipeline
-├── Deterministic Local Simulation (solo + multiplayer replica)
-└── Socket.IO Client Networking
-
-Backend (apps/server)
-├── Node.js + Express Server
-├── Socket.IO Realtime Gateway
-├── Room/Lobby Manager (2-player rooms + code invites)
-├── Authoritative Match Simulation @ 60 TPS
-└── Worker Thread State Validation (parallel audit lane)
+├── React UI + Lobby
+├── Phaser gameplay renderer
+├── Local deterministic Tetris simulation
+└── Supabase Realtime broadcast + presence
 
 Shared (packages/core)
-├── Deterministic Tetris Engine
-├── 7-bag Randomizer
-├── Hold / Ghost / Queue / Rotation
-├── Garbage, Combo, Back-to-Back
-└── Lockstep Input Scheduling + State Serialization
+├── Tetris engine
+├── 7-bag randomizer
+├── Hold / ghost / queue / garbage logic
+└── Multiplayer event protocol types
+
+Supabase backend
+├── Edge Function: room-api
+├── Postgres tables for profiles / rooms / room players
+└── Realtime channels for room events and presence
 ```
 
-## Features Implemented
+## Multiplayer Model
 
-- Anonymous session accounts (`Player_####`, `Guest_####`, `TetriUser_####`)
-- Local storage session + nickname persistence
-- Solo mode with deterministic 60 TPS simulation
-- Multiplayer 1v1 room-code system (`create_room`, `join_room`)
-- Auto-start match when room has 2 players
-- Input-only synchronization (`input_event`, `input_broadcast`)
-- Periodic tick snapshots + desync detection/resync
-- Host lobby semantics + graceful disconnect handling
-- Automatic empty-room cleanup
+Multiplayer is event-based.
 
-## Parallel and Distributed Computing Concepts
+The app does **not** synchronize:
 
-- Client/server distributed real-time architecture
-- Event-driven concurrent networking (Socket.IO)
-- Lockstep deterministic simulation with tick scheduling
-- Asynchronous non-blocking room processing
-- Worker-thread parallel validation of distributed game state
-- Client-side prediction with authoritative correction
+- full board state
+- per-frame movement
+- rotation snapshots
+- continuous gameplay state
 
-## Run
+The app **does** synchronize:
+
+- score updates
+- line clears
+- garbage attacks
+- combo / back-to-back events
+- game over
+- winner declaration
+- room presence / connection state
+
+## Local Run
 
 ```bash
 npm install
 npm run dev
 ```
 
-- Client: `http://localhost:5173`
-- Server: `http://localhost:4000`
+Client:
+`http://localhost:5173`
 
-## Build & Typecheck
+## Supabase Setup
+
+Create a Supabase project, then add these frontend env vars in Vercel:
+
+```bash
+VITE_SUPABASE_URL=https://your-project-id.supabase.co
+VITE_SUPABASE_ANON_KEY=your-supabase-anon-key
+```
+
+For Edge Functions, set this secret in Supabase:
+
+```bash
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+```
+
+Apply the SQL schema from:
+
+- [supabase/migrations/20260513190000_init_event_multiplayer.sql](C:/Users/flores%20kyle/Desktop/github/tetris-website/tetris-web/supabase/migrations/20260513190000_init_event_multiplayer.sql)
+
+Deploy the Edge Function from:
+
+- [supabase/functions/room-api/index.ts](C:/Users/flores%20kyle/Desktop/github/tetris-website/tetris-web/supabase/functions/room-api/index.ts)
+
+Optional local env example:
+
+- [apps/client/.env.example](C:/Users/flores%20kyle/Desktop/github/tetris-website/tetris-web/apps/client/.env.example)
+
+## Vercel
+
+Frontend build command:
+
+```bash
+npm run build --workspace=@tetris/client
+```
+
+Frontend output:
+
+`apps/client/dist`
+
+## Notes
+
+- `apps/server` is now just a placeholder and is no longer the multiplayer backend.
+- Supabase Realtime handles room presence and event passing.
+- Supabase Edge Functions handle user registration, room creation, room joining, room leaving, and winner reporting.
+
+## Validation
 
 ```bash
 npm run typecheck
 npm run build
-```
-
-## Railway Deployment
-
-Deploy this as two Railway services:
-
-1. Frontend service
-   Build command: `npm run build --workspace=@tetris/client`
-   Start command: `npm run preview --workspace=@tetris/client -- --host 0.0.0.0 --port $PORT`
-
-2. Backend service
-   Build command: `npm run build --workspace=@tetris/server`
-   Start command: `npm run start --workspace=@tetris/server`
-
-The backend workspace currently compiles to a nested entry inside `dist`, so the workspace `start` script already points Railway at the correct built file.
-
-Set this environment variable on the frontend service:
-
-```bash
-VITE_SERVER_URL=https://your-backend-service.up.railway.app
 ```
