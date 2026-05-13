@@ -7,10 +7,11 @@
     "packages/*"
   ],
   "scripts": {
-    "supabase": "supabase",
-    "db:push": "supabase db push",
-    "db:link": "supabase link",
-    "db:login": "supabase login",
+    "supabase": "npx supabase",
+    "db:login": "npx supabase login",
+    "db:link": "npx supabase link",
+    "db:push": "npx supabase db push",
+    "db:reset": "npx supabase db reset",
     "predev": "npm run build -w @tetris/core",
     "dev": "concurrently \"npm run dev -w @tetris/server\" \"npm run dev -w @tetris/client\"",
     "dev:client": "npm run dev -w @tetris/client",
