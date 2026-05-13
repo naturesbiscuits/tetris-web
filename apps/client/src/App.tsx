@@ -191,7 +191,9 @@ export default function App(): JSX.Element {
     <main className="app-root">
       <header className="topbar">
         <h1>Distributed Multiplayer Tetris</h1>
-        <span className="status-pill">{transportState}</span>
+        <span className="status-pill" title={transportState === "ERROR" ? "Room Edge Function or env misconfigured" : undefined}>
+          {transportState === "CONNECTING" ? "ROOM API…" : transportState}
+        </span>
       </header>
 
       {mode !== "game" && (

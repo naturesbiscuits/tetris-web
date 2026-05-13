@@ -10,6 +10,17 @@ import {
 } from "@tetris/core";
 import { supabase } from "./supabase";
 
+function roomApiErrorMessage(error: { message: string } | null, data: RoomApiResponse | null | undefined): string {
+  if (data && typeof data.error === "string" && data.error.trim()) {
+    return data.error.trim();
+  }
+  const msg = error?.message ?? "Room API request failed";
+  if (msg.includes("Failed to send a request to the Edge Function")) {
+    return "Room API unreachable: deploy the `room-api` Edge Function to Supabase, confirm Vercel has VITE_SUPABASE_URL (base URL only) and VITE_SUPABASE_ANON_KEY, and redeploy the function after setting verify_jwt = false for room-api.";
+  }
+  return msg;
+}
+
 function randomNickname(): string {
   const prefix = ["Player", "Guest", "TetriUser"][Math.floor(Math.random() * 3)];
   return `${prefix}_${Math.floor(100 + Math.random() * 9900)}`;
@@ -27,7 +38,7 @@ export async function ensureProfile(sessionId?: string, nickname?: string): Prom
   };
   const { data, error } = await supabase.functions.invoke<RoomApiResponse>("room-api", { body: request });
   if (error || !data?.profile) {
-    throw new Error(data?.error || error?.message || "Unable to create profile");
+    throw new Error(roomApiErrorMessage(error, data));
   }
   return data.profile;
 }
@@ -68,9 +79,8 @@ export async function getRoom(profile: ClientProfile, roomCode: string): Promise
     } satisfies RoomApiRequest
   });
   if (error) {
-    throw new Error(error.message);
+    throw new Error(roomApiErrorMessage(error, data));
   }
-  return data?.room ?? null;
 }
 
 export async function reportGameOver(profile: ClientProfile, roomCode: string): Promise<string | null> {
@@ -82,7 +92,7 @@ export async function reportGameOver(profile: ClientProfile, roomCode: string): 
     } satisfies RoomApiRequest
   });
   if (error) {
-    throw new Error(error.message);
+    throw new Error(roomApiErrorMessage(error, data));
   }
   return data?.winnerId ?? null;
 }
@@ -90,13 +100,18 @@ export async function reportGameOver(profile: ClientProfile, roomCode: string): 
 async function requireRoomResponse(request: RoomApiRequest): Promise<RoomSnapshot> {
   const { data, error } = await supabase.functions.invoke<RoomApiResponse>("room-api", { body: request });
   if (error || !data?.room) {
-    throw new Error(data?.error || error?.message || "Room operation failed");
+    throw new Error(roomApiErrorMessage(error, data));
   }
   return data.room;
 }
 
 function markConnectedPlayers(room: RoomSnapshot, presenceState: Record<string, PresencePlayerState[]>): RoomSnapshot {
-  const connectedIds = new Set(Object.keys(presenceState));
+  const connectedIds = new Set<string>();
+  for (const metas of Object.values(presenceState)) {
+    for (const meta of metas) {
+      if (meta?.sessionId) connectedIds.add(meta.sessionId);
+    }
+  }
   return {
     ...room,
     players: room.players.map((player) => ({
