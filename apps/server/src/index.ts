@@ -71,9 +71,9 @@ io.on("connection", (socket) => {
   });
 });
 
-server.listen(port, () => {
+server.listen(port, "0.0.0.0", () => {
   // eslint-disable-next-line no-console
-  console.log(`Tetris server listening on http://localhost:${port}`);
+  console.log(`Tetris server listening on 0.0.0.0:${port}`);
 });
 
 process.on("SIGINT", () => {

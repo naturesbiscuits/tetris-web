@@ -76,7 +76,7 @@ Deploy this as two Railway services:
 
 1. Frontend service
    Build command: `npm run build --workspace=@tetris/client`
-   Start command: `npm run start --workspace=@tetris/client`
+   Start command: `npm run preview --workspace=@tetris/client -- --host 0.0.0.0 --port $PORT`
 
 2. Backend service
    Build command: `npm run build --workspace=@tetris/server`
