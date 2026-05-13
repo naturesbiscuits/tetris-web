@@ -82,6 +82,8 @@ Deploy this as two Railway services:
    Build command: `npm run build --workspace=@tetris/server`
    Start command: `npm run start --workspace=@tetris/server`
 
+The backend workspace currently compiles to a nested entry inside `dist`, so the workspace `start` script already points Railway at the correct built file.
+
 Set this environment variable on the frontend service:
 
 ```bash
