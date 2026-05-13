@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { ClientProfile, RoomSnapshot, ScheduledInput, TickStatePacket } from "@tetris/core";
+import type { ClientProfile, RoomSnapshot } from "@tetris/core";
 import { GameViewport } from "./components/GameViewport";
 import { createSocket } from "./network/socket";
 import { MultiplayerController, SoloController, type GameController } from "./state/controllers";
@@ -64,7 +64,6 @@ export default function App(): JSX.Element {
     socket.on("start_match", (payload) => {
       if (!socket.id) return;
       const controller = new MultiplayerController({
-        seed: payload.seed,
         players: payload.players,
         localPlayerId: socket.id,
         socket
@@ -74,28 +73,17 @@ export default function App(): JSX.Element {
       setMode("game");
     });
 
-    socket.on("input_broadcast", (input: ScheduledInput) => {
+    socket.on("multiplayer_event", (event) => {
       const controller = controllerRef.current;
       if (controller instanceof MultiplayerController) {
-        controller.handleBroadcastInput(input);
+        controller.handleMultiplayerEvent(event);
       }
     });
 
-    socket.on("tick_state", (packet: TickStatePacket) => {
+    socket.on("winner_declared", ({ winnerId }) => {
       const controller = controllerRef.current;
       if (controller instanceof MultiplayerController) {
-        const hashByPlayerId = controller.handleTickState(packet);
-        socket.emit("client_hash_report", {
-          tick: packet.tick,
-          hashByPlayerId
-        });
-      }
-    });
-
-    socket.on("desync_detected", (payload) => {
-      const controller = controllerRef.current;
-      if (controller instanceof MultiplayerController) {
-        controller.reconcile(payload);
+        controller.setWinner(winnerId);
       }
     });
 

@@ -1,19 +1,12 @@
 import { randomUUID } from "node:crypto";
-import { Worker } from "node:worker_threads";
-import { fileURLToPath } from "node:url";
-import { dirname, resolve } from "node:path";
 import type { Server, Socket } from "socket.io";
-import {
-  INPUT_DELAY_TICKS,
-  MultiplayerMatchEngine,
-  SERVER_STATE_BROADCAST_INTERVAL,
-  type ClientProfile,
-  type ClientToServerEvents,
-  type MatchSerializedState,
-  type RoomPlayer,
-  type RoomSnapshot,
-  type ScheduledInput,
-  type ServerToClientEvents
+import type {
+  ClientProfile,
+  ClientToServerEvents,
+  MultiplayerEventPacket,
+  RoomPlayer,
+  RoomSnapshot,
+  ServerToClientEvents
 } from "@tetris/core";
 
 type AppSocket = Socket<ClientToServerEvents, ServerToClientEvents>;
@@ -31,17 +24,13 @@ interface RoomState {
   hostId: string;
   status: "waiting" | "running" | "finished";
   players: ConnectedPlayer[];
-  match: MultiplayerMatchEngine | null;
-  inputSeqBySocket: Map<string, number>;
-  lastAuditedHashes: Record<string, number>;
 }
 
 function randomRoomCode(): string {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   let out = "";
   for (let i = 0; i < 6; i += 1) {
-    const idx = Math.floor(Math.random() * chars.length);
-    out += chars[idx];
+    out += chars[Math.floor(Math.random() * chars.length)];
   }
   return out;
 }
@@ -52,11 +41,7 @@ function defaultNickname(): string {
 }
 
 function toRoomPlayer(player: ConnectedPlayer): RoomPlayer {
-  return {
-    id: player.socketId,
-    nickname: player.nickname,
-    isHost: player.isHost
-  };
+  return { id: player.socketId, nickname: player.nickname, isHost: player.isHost };
 }
 
 function toRoomSnapshot(room: RoomState): RoomSnapshot {
@@ -72,37 +57,12 @@ export class RoomManager {
   private readonly rooms = new Map<string, RoomState>();
   private readonly socketRoom = new Map<string, string>();
   private readonly profiles = new Map<string, ClientProfile>();
-  private readonly worker: Worker;
-  private tickHandle: NodeJS.Timeout | null = null;
 
-  constructor(private readonly io: AppIo) {
-    const currentFile = fileURLToPath(import.meta.url);
-    const currentDir = dirname(currentFile);
-    const isTsRuntime = currentFile.endsWith(".ts");
-    const workerPath = resolve(currentDir, `./workers/validationWorker.${isTsRuntime ? "ts" : "js"}`);
-    this.worker = new Worker(workerPath, {
-      execArgv: isTsRuntime ? ["--import", "tsx"] : []
-    });
-    this.worker.on("message", (payload: { op: "audit_result"; roomCode: string; tick: number; hashByPlayerId: Record<string, number> }) => {
-      if (payload.op !== "audit_result") return;
-      const room = this.rooms.get(payload.roomCode);
-      if (!room) return;
-      room.lastAuditedHashes = payload.hashByPlayerId;
-    });
-  }
+  constructor(private readonly io: AppIo) {}
 
-  start(): void {
-    if (this.tickHandle) return;
-    this.tickHandle = setInterval(() => this.tick(), 1000 / 60);
-  }
+  start(): void {}
 
-  stop(): void {
-    if (this.tickHandle) {
-      clearInterval(this.tickHandle);
-      this.tickHandle = null;
-    }
-    this.worker.terminate().catch(() => undefined);
-  }
+  stop(): void {}
 
   registerProfile(socketId: string, payload: { sessionId?: string; nickname?: string }): ClientProfile {
     const existing = this.profiles.get(socketId);
@@ -117,15 +77,12 @@ export class RoomManager {
   createRoom(socket: AppSocket): RoomSnapshot | null {
     const profile = this.profiles.get(socket.id);
     if (!profile) return null;
+
     const existingRoomCode = this.socketRoom.get(socket.id);
-    if (existingRoomCode) {
-      this.leaveRoom(socket);
-    }
+    if (existingRoomCode) this.leaveRoom(socket);
 
     let code = randomRoomCode();
-    while (this.rooms.has(code)) {
-      code = randomRoomCode();
-    }
+    while (this.rooms.has(code)) code = randomRoomCode();
 
     const host: ConnectedPlayer = {
       socketId: socket.id,
@@ -136,12 +93,9 @@ export class RoomManager {
 
     const room: RoomState = {
       roomCode: code,
-      hostId: host.socketId,
+      hostId: socket.id,
       status: "waiting",
-      players: [host],
-      match: null,
-      inputSeqBySocket: new Map(),
-      lastAuditedHashes: {}
+      players: [host]
     };
 
     this.rooms.set(code, room);
@@ -153,6 +107,7 @@ export class RoomManager {
   joinRoom(socket: AppSocket, roomCode: string): RoomSnapshot | { error: string } {
     const profile = this.profiles.get(socket.id);
     if (!profile) return { error: "Profile not registered." };
+
     const normalizedCode = roomCode.trim().toUpperCase();
     const room = this.rooms.get(normalizedCode);
     if (!room) return { error: "Room does not exist." };
@@ -160,9 +115,7 @@ export class RoomManager {
     if (room.status !== "waiting") return { error: "Match already in progress." };
 
     const existingRoomCode = this.socketRoom.get(socket.id);
-    if (existingRoomCode && existingRoomCode !== normalizedCode) {
-      this.leaveRoom(socket);
-    }
+    if (existingRoomCode && existingRoomCode !== normalizedCode) this.leaveRoom(socket);
 
     const player: ConnectedPlayer = {
       socketId: socket.id,
@@ -170,6 +123,7 @@ export class RoomManager {
       nickname: profile.nickname,
       isHost: false
     };
+
     room.players.push(player);
     this.socketRoom.set(socket.id, normalizedCode);
     socket.join(normalizedCode);
@@ -190,7 +144,6 @@ export class RoomManager {
 
     const wasHost = room.hostId === socket.id;
     room.players = room.players.filter((player) => player.socketId !== socket.id);
-    room.inputSeqBySocket.delete(socket.id);
 
     if (room.players.length === 0) {
       this.rooms.delete(roomCode);
@@ -204,113 +157,48 @@ export class RoomManager {
 
     if (room.status === "running") {
       room.status = "finished";
-      const winner = room.players[0]?.socketId ?? null;
-      this.io.to(roomCode).emit("game_over", { winnerId: winner });
+      const winnerId = room.players[0]?.socketId ?? null;
+      this.io.to(roomCode).emit("winner_declared", { winnerId });
+      this.io.to(roomCode).emit("game_over", { winnerId });
     }
 
     this.io.to(roomCode).emit("player_disconnected", toRoomSnapshot(room));
   }
 
   startMatch(room: RoomState): void {
-    if (room.status !== "waiting") return;
-    if (room.players.length < 2) return;
-
-    const seed = Math.floor(Math.random() * 0x7fffffff);
-    room.match = new MultiplayerMatchEngine(seed);
-    for (const player of room.players) {
-      room.match.addPlayer(player.socketId, player.nickname);
-      room.inputSeqBySocket.set(player.socketId, 0);
-    }
+    if (room.status !== "waiting" || room.players.length < 2) return;
     room.status = "running";
-
     this.io.to(room.roomCode).emit("start_match", {
       roomCode: room.roomCode,
-      seed,
-      players: room.players.map(toRoomPlayer),
-      startTick: room.match.getTick()
+      players: room.players.map(toRoomPlayer)
     });
   }
 
-  handleInput(socket: AppSocket, payload: { tick: number; seq: number; kind: ScheduledInput["kind"] }): void {
+  relayGameplayEvent(socket: AppSocket, payload: Omit<MultiplayerEventPacket, "roomCode" | "playerId">): void {
     const roomCode = this.socketRoom.get(socket.id);
     if (!roomCode) return;
     const room = this.rooms.get(roomCode);
-    if (!room || room.status !== "running" || !room.match) return;
+    if (!room || room.status !== "running") return;
 
-    const previousSeq = room.inputSeqBySocket.get(socket.id) ?? -1;
-    if (payload.seq <= previousSeq) {
-      return;
-    }
-    room.inputSeqBySocket.set(socket.id, payload.seq);
-
-    const targetTick = Math.max(payload.tick, room.match.getTick() + INPUT_DELAY_TICKS);
-    const scheduled: ScheduledInput = {
+    const eventPacket: MultiplayerEventPacket = {
+      roomCode,
       playerId: socket.id,
-      tick: targetTick,
-      seq: payload.seq,
-      kind: payload.kind
+      ...payload
     };
 
-    room.match.scheduleInput(scheduled);
-    this.io.to(roomCode).emit("input_broadcast", scheduled);
+    this.io.to(roomCode).emit("multiplayer_event", eventPacket);
   }
 
-  handleHashReport(socket: AppSocket, payload: { tick: number; hashByPlayerId: Record<string, number> }): void {
+  reportGameOver(socket: AppSocket): void {
     const roomCode = this.socketRoom.get(socket.id);
     if (!roomCode) return;
     const room = this.rooms.get(roomCode);
-    if (!room || !room.match) return;
-    if (payload.tick <= 0) return;
+    if (!room || room.status !== "running") return;
 
-    let desync = false;
-    for (const [playerId, hash] of Object.entries(payload.hashByPlayerId)) {
-      const expected = room.lastAuditedHashes[playerId];
-      if (expected !== undefined && expected !== hash) {
-        desync = true;
-        break;
-      }
-    }
-
-    if (desync) {
-      this.io.to(socket.id).emit("desync_detected", {
-        authoritativeTick: room.match.getTick(),
-        state: room.match.serialize()
-      });
-    }
-  }
-
-  private tick(): void {
-    for (const room of this.rooms.values()) {
-      if (room.status !== "running" || !room.match) continue;
-
-      room.match.step();
-
-      const events = room.match.drainEvents();
-      if (events.length > 0) {
-        this.io.to(room.roomCode).emit("simulation_events", {
-          tick: room.match.getTick(),
-          events
-        });
-      }
-
-      if (room.match.getTick() % SERVER_STATE_BROADCAST_INTERVAL === 0) {
-        this.io.to(room.roomCode).emit("tick_state", room.match.getTickStatePacket());
-      }
-
-      if (room.match.getTick() % 30 === 0) {
-        const serialized = room.match.serialize();
-        this.worker.postMessage({
-          op: "audit",
-          roomCode: room.roomCode,
-          tick: serialized.tick,
-          state: serialized
-        });
-      }
-
-      if (room.match.isMatchOver()) {
-        room.status = "finished";
-        this.io.to(room.roomCode).emit("game_over", { winnerId: room.match.getWinnerId() });
-      }
-    }
+    room.status = "finished";
+    const winnerId = room.players.find((player) => player.socketId !== socket.id)?.socketId ?? null;
+    this.io.to(roomCode).emit("winner_declared", { winnerId });
+    this.io.to(roomCode).emit("game_over", { winnerId });
   }
 }
+

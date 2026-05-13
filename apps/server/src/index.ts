@@ -51,15 +51,15 @@ io.on("connection", (socket) => {
   });
 
   socket.on("start_match", () => {
-    // Host is authoritative for lobby lifecycle, but room auto-start already handles 2-player ready state.
+    // Room auto-starts when both players join.
   });
 
-  socket.on("input_event", (payload) => {
-    roomManager.handleInput(socket, payload);
+  socket.on("multiplayer_event", (payload) => {
+    roomManager.relayGameplayEvent(socket, payload);
   });
 
-  socket.on("client_hash_report", (payload) => {
-    roomManager.handleHashReport(socket, payload);
+  socket.on("report_game_over", () => {
+    roomManager.reportGameOver(socket);
   });
 
   socket.on("leave_room", () => {

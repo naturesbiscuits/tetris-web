@@ -1,15 +1,11 @@
 import {
-  INPUT_DELAY_TICKS,
-  MultiplayerMatchEngine,
   PlayerEngine,
   type ClientToServerEvents,
   type InputKind,
-  type MatchSerializedState,
+  type MultiplayerEventPacket,
   type PieceType,
   type RoomPlayer,
-  type ScheduledInput,
-  type ServerToClientEvents,
-  type TickStatePacket
+  type ServerToClientEvents
 } from "@tetris/core";
 import type { Socket } from "socket.io-client";
 
@@ -26,6 +22,15 @@ export interface BoardRenderState {
   displayName: string;
 }
 
+export interface OpponentEventState {
+  displayName: string;
+  score: number;
+  combo: number;
+  backToBack: boolean;
+  lastGarbage: number;
+  status: "alive" | "game_over" | "winner";
+}
+
 export interface FrameSnapshot {
   mode: "solo" | "multiplayer";
   tick: number;
@@ -34,6 +39,7 @@ export interface FrameSnapshot {
   youLabel: string;
   opponentLabel: string;
   statusLabel: string;
+  opponentState?: OpponentEventState;
 }
 
 export interface GameController {
@@ -143,34 +149,53 @@ export class SoloController implements GameController {
 }
 
 export class MultiplayerController implements GameController {
-  private readonly match: MultiplayerMatchEngine;
-  private readonly localPlayerId: string;
-  private readonly remotePlayerId: string;
+  private readonly engine: PlayerEngine;
   private readonly socket: Socket<ServerToClientEvents, ClientToServerEvents>;
-  private readonly predictedInputBySeq = new Map<number, number>();
+  private readonly localPlayerId: string;
+  private readonly opponentPlayerId: string;
+  private tick = 0;
   private timer: number | null = null;
-  private seq = 0;
   private winnerId: string | null = null;
+  private announcedGameOver = false;
+  private lastCombo = -1;
+  private lastBackToBack = false;
+  private opponentState: OpponentEventState;
 
   constructor(params: {
-    seed: number;
     players: RoomPlayer[];
     localPlayerId: string;
     socket: Socket<ServerToClientEvents, ClientToServerEvents>;
   }) {
-    this.match = new MultiplayerMatchEngine(params.seed);
-    for (const player of params.players) {
-      this.match.addPlayer(player.id, player.nickname);
+    const local = params.players.find((p) => p.id === params.localPlayerId);
+    const opponent = params.players.find((p) => p.id !== params.localPlayerId);
+    if (!local || !opponent) {
+      throw new Error("Multiplayer room must have exactly 2 players");
     }
     this.localPlayerId = params.localPlayerId;
-    this.remotePlayerId = params.players.find((player) => player.id !== params.localPlayerId)?.id ?? "";
+    this.opponentPlayerId = opponent.id;
     this.socket = params.socket;
+    this.engine = new PlayerEngine(this.localPlayerId, local.nickname, Date.now() & 0x7fffffff);
+    this.opponentState = {
+      displayName: opponent.nickname,
+      score: 0,
+      combo: -1,
+      backToBack: false,
+      lastGarbage: 0,
+      status: "alive"
+    };
   }
 
   start(): void {
     if (this.timer !== null) return;
     this.timer = window.setInterval(() => {
-      this.match.step();
+      this.tick += 1;
+      this.engine.tick();
+      this.publishLocalEvents();
+      if (!this.engine.getView().alive && !this.announcedGameOver) {
+        this.announcedGameOver = true;
+        this.socket.emit("multiplayer_event", { type: "game_over" });
+        this.socket.emit("report_game_over");
+      }
     }, 1000 / 60);
   }
 
@@ -184,87 +209,122 @@ export class MultiplayerController implements GameController {
   onKeyDown(code: string): void {
     const mapped = mapKeyToInput(code, false);
     if (!mapped) return;
-    this.submitInput(mapped);
+    this.engine.applyInput(mapped);
+    this.publishLocalEvents();
   }
 
   onKeyUp(code: string): void {
     const mapped = mapKeyToInput(code, true);
     if (!mapped) return;
-    this.submitInput(mapped);
+    this.engine.applyInput(mapped);
   }
 
-  private submitInput(kind: InputKind): void {
-    const targetTick = this.match.getTick() + INPUT_DELAY_TICKS;
-    this.seq += 1;
-    const input: ScheduledInput = {
-      playerId: this.localPlayerId,
-      tick: targetTick,
-      seq: this.seq,
-      kind
-    };
-    this.match.scheduleInput(input);
-    this.predictedInputBySeq.set(input.seq, input.tick);
-    this.socket.emit("input_event", {
-      tick: input.tick,
-      seq: input.seq,
-      kind: input.kind
+  private publishLocalEvents(): void {
+    const view = this.engine.getView();
+    this.socket.emit("multiplayer_event", {
+      type: "score_update",
+      score: view.score
     });
-  }
 
-  handleBroadcastInput(input: ScheduledInput): void {
-    if (input.playerId === this.localPlayerId) {
-      const predictedTick = this.predictedInputBySeq.get(input.seq);
-      if (predictedTick === input.tick) {
-        this.predictedInputBySeq.delete(input.seq);
-        return;
+    if (view.combo !== this.lastCombo) {
+      this.lastCombo = view.combo;
+      this.socket.emit("multiplayer_event", {
+        type: "combo",
+        combo: Math.max(0, view.combo)
+      });
+    }
+
+    if (view.backToBack !== this.lastBackToBack) {
+      this.lastBackToBack = view.backToBack;
+      this.socket.emit("multiplayer_event", {
+        type: "b2b",
+        backToBack: view.backToBack
+      });
+    }
+
+    for (const event of this.engine.drainEvents()) {
+      if (event.type === "lock") {
+        if (event.linesCleared > 0) {
+          this.socket.emit("multiplayer_event", {
+            type: "line_clear",
+            linesCleared: event.linesCleared,
+            score: view.score
+          });
+        }
+        if (event.attackSent > 0) {
+          this.socket.emit("multiplayer_event", {
+            type: "garbage_attack",
+            garbage: event.attackSent
+          });
+        }
+      }
+      if (event.type === "top_out") {
+        this.socket.emit("multiplayer_event", { type: "game_over" });
       }
     }
-    this.match.scheduleInput(input);
   }
 
-  handleTickState(packet: TickStatePacket): Record<string, number> {
-    const localHashes: Record<string, number> = {};
-    for (const player of packet.players) {
-      const localPlayer = this.match.getPlayer(player.playerId);
-      localHashes[player.playerId] = localPlayer?.getView().boardHash ?? 0;
+  handleMultiplayerEvent(event: MultiplayerEventPacket): void {
+    if (event.playerId === this.localPlayerId) return;
+    if (event.playerId !== this.opponentPlayerId) return;
+
+    switch (event.type) {
+      case "score_update":
+        this.opponentState.score = event.score ?? this.opponentState.score;
+        break;
+      case "combo":
+        this.opponentState.combo = event.combo ?? this.opponentState.combo;
+        break;
+      case "b2b":
+        this.opponentState.backToBack = event.backToBack ?? this.opponentState.backToBack;
+        break;
+      case "garbage_attack": {
+        const garbage = event.garbage ?? 0;
+        this.opponentState.lastGarbage = garbage;
+        if (garbage > 0) {
+          this.engine.enqueueGarbage(garbage);
+        }
+        break;
+      }
+      case "game_over":
+        this.opponentState.status = "game_over";
+        break;
+      case "winner_declared":
+        this.winnerId = event.winnerId ?? null;
+        this.opponentState.status = this.winnerId === this.opponentPlayerId ? "winner" : this.opponentState.status;
+        break;
+      default:
+        break;
     }
-    return localHashes;
-  }
-
-  reconcile(payload: { authoritativeTick: number; state: MatchSerializedState }): void {
-    this.match.hydrate(payload.state);
   }
 
   setWinner(winnerId: string | null): void {
     this.winnerId = winnerId;
+    if (winnerId === this.opponentPlayerId) this.opponentState.status = "winner";
   }
 
   getFrame(): FrameSnapshot {
-    const youEngine = this.match.getPlayer(this.localPlayerId);
-    const opponentEngine = this.match.getPlayer(this.remotePlayerId);
-    if (!youEngine) {
-      throw new Error("Local player engine missing");
-    }
-
-    const you = toBoardRenderState(youEngine);
-    const opponent = opponentEngine ? toBoardRenderState(opponentEngine) : null;
-    let statusLabel = "MULTIPLAYER";
+    let statusLabel = "MULTIPLAYER EVENT MODE";
     if (this.winnerId !== null) {
       statusLabel = this.winnerId === this.localPlayerId ? "WINNER" : "GAME OVER";
+    } else if (!this.engine.getView().alive) {
+      statusLabel = "GAME OVER";
     }
 
     return {
       mode: "multiplayer",
-      tick: this.match.getTick(),
-      you,
-      opponent,
+      tick: this.tick,
+      you: toBoardRenderState(this.engine),
+      opponent: null,
       youLabel: "YOU",
       opponentLabel: "OPPONENT",
-      statusLabel
+      statusLabel,
+      opponentState: this.opponentState
     };
   }
 
   isFinished(): boolean {
-    return this.winnerId !== null;
+    return this.winnerId !== null || !this.engine.getView().alive;
   }
 }
+

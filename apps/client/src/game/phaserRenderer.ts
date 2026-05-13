@@ -98,6 +98,13 @@ export function createPhaserGame(container: HTMLDivElement, getSnapshot: Snapsho
       } else {
         this.graphics.fillStyle(0x1e293b, 0.9);
         this.graphics.fillRect(264, 42, BOARD_WIDTH * cellSize, VISIBLE_HEIGHT * cellSize);
+        if (snapshot.mode === "multiplayer" && snapshot.opponentState) {
+          this.oppLabel.setText(`${snapshot.opponentLabel} - ${snapshot.opponentState.displayName}`);
+          this.statusLabel.setText(
+            `${snapshot.statusLabel} | SCORE ${snapshot.you.score} | OPP SCORE ${snapshot.opponentState.score} | OPP COMBO ${Math.max(0, snapshot.opponentState.combo)} | OPP GARBAGE ${snapshot.opponentState.lastGarbage}`
+          );
+          return;
+        }
         this.oppLabel.setText("SOLO MODE");
       }
 
