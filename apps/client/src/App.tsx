@@ -344,11 +344,12 @@ export default function App(): JSX.Element {
                 {room.roomKind === "versus" ? " / 2 max" : " — unlimited players"}
               </p>
               {room.roomKind === "chaotic" && room.status === "waiting" && room.hostId === profile?.sessionId && (
-                <p>
-                  <button type="button" className="primary" onClick={() => void beginChaoticMatch()}>
-                    Start chaotic match (host starts when ready)
+                <div className="chaotic-start-host">
+                  <p className="chaotic-start-host-title">You are the host — start the match when you are ready.</p>
+                  <button type="button" className="chaotic-host-start" onClick={() => void beginChaoticMatch()}>
+                    Start chaotic match
                   </button>
-                </p>
+                </div>
               )}
               <ul>
                 {room.players.map((player) => (

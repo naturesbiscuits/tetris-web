@@ -116,6 +116,50 @@ button:hover {
   color: var(--muted);
 }
 
+.chaotic-start-host {
+  margin-top: 14px;
+  padding: 14px 12px 16px;
+  border-radius: 10px;
+  border: 2px solid rgba(248, 113, 113, 0.45);
+  background: linear-gradient(180deg, rgba(127, 29, 29, 0.35) 0%, rgba(24, 24, 27, 0.6) 100%);
+}
+
+.chaotic-start-host-title {
+  margin: 0 0 12px !important;
+  font-size: 1rem;
+  color: #fecaca !important;
+  font-weight: 600;
+}
+
+button.chaotic-host-start {
+  width: 100%;
+  max-width: 100%;
+  font-size: 1.25rem;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  padding: 16px 22px;
+  border-radius: 12px;
+  border: 2px solid #fca5a5;
+  color: #fff;
+  background: linear-gradient(180deg, #ef4444 0%, #b91c1c 55%, #7f1d1d 100%);
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.35),
+    0 6px 22px rgba(220, 38, 38, 0.55);
+  cursor: pointer;
+}
+
+button.chaotic-host-start:hover {
+  filter: brightness(1.12);
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.35),
+    0 8px 28px rgba(220, 38, 38, 0.65);
+}
+
+button.chaotic-host-start:active {
+  filter: brightness(0.95);
+  transform: translateY(1px);
+}
+
 .room-box ul {
   margin: 0;
   padding-left: 18px;
