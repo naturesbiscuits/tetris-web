@@ -1,6 +1,12 @@
 import { useEffect, useState } from "react";
 import { supabase } from "../network/supabase";
 
+/** Row shape for `public.connectivity_display` (Dashboard table). */
+type ConnectivityDisplayRow = {
+  id: number;
+  n: number;
+};
+
 export function ConnectivityProbe(): JSX.Element {
   const [n, setN] = useState<number | null>(null);
   const [status, setStatus] = useState<"loading" | "ok" | "error">("loading");
@@ -8,10 +14,12 @@ export function ConnectivityProbe(): JSX.Element {
   useEffect(() => {
     let cancelled = false;
     void supabase
+      .schema("public")
       .from("connectivity_display")
-      .select("n")
+      .select("id,n")
       .eq("id", 1)
       .maybeSingle()
+      .returns<ConnectivityDisplayRow>()
       .then(({ data, error }) => {
         if (cancelled) return;
         if (error) {
