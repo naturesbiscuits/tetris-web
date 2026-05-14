@@ -35,6 +35,7 @@ export function ConnectivityProbe(): JSX.Element {
       };
     }
 
+    // Supabase filter builders are PromiseLike<T>, not Promise<T> — chaining `.catch()` fails tsc (TS2339) on Vercel.
     void (async () => {
       try {
         const { data, error } = await supabase
