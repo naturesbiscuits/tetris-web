@@ -10,7 +10,8 @@ import {
   joinRoom,
   leaveRoom,
   reportGameOver,
-  startChaoticMatch
+  startChaoticMatch,
+  startVersusMatch
 } from "./network/multiplayer";
 import { ChaoticCoopController, MultiplayerController, SoloController, type GameController } from "./state/controllers";
 
@@ -27,8 +28,19 @@ function canStartChaoticMatch(room: RoomSnapshot | null): room is RoomSnapshot {
 function isChaoticWaitingHost(room: RoomSnapshot, sessionId: string | undefined): boolean {
   if (!sessionId) return false;
   if (room.roomKind !== "chaotic" || room.status !== "waiting") return false;
-  if (room.hostId === sessionId) return true;
-  return room.players.some((p) => p.id === sessionId && p.isHost);
+  const sid = sessionId.trim().toLowerCase();
+  const hid = (room.hostId ?? "").trim().toLowerCase();
+  if (hid === sid) return true;
+  return room.players.some((p) => p.id.trim().toLowerCase() === sid && p.isHost);
+}
+
+function isVersusWaitingHost(room: RoomSnapshot, sessionId: string | undefined): boolean {
+  if (!sessionId) return false;
+  if (room.roomKind !== "versus" || room.status !== "waiting") return false;
+  const sid = sessionId.trim().toLowerCase();
+  const hid = (room.hostId ?? "").trim().toLowerCase();
+  if (hid === sid) return true;
+  return room.players.some((p) => p.id.trim().toLowerCase() === sid && p.isHost);
 }
 
 export default function App(): JSX.Element {
@@ -245,6 +257,34 @@ export default function App(): JSX.Element {
     }
   };
 
+  const beginVersusMatch = async () => {
+    if (!profile || !room || room.roomKind !== "versus" || !isVersusWaitingHost(room, profile.sessionId)) return;
+    if (room.players.length < 2) {
+      showError("Need two players in the room before you can start.");
+      return;
+    }
+    try {
+      const next = await startVersusMatch(profile, room.roomCode);
+      setRoom(next);
+      await maybeStartMatch(next);
+    } catch (err) {
+      showError(err instanceof Error ? err.message : "Unable to start 1v1 match");
+    }
+  };
+
+  const tryEnterVersusMatch = async () => {
+    if (!profile || !room || room.roomKind !== "versus") return;
+    try {
+      const refreshed = await getRoom(profile, room.roomCode);
+      if (refreshed) {
+        setRoom(refreshed);
+        await maybeStartMatch(refreshed);
+      }
+    } catch (err) {
+      showError(err instanceof Error ? err.message : "Unable to enter match");
+    }
+  };
+
   beginChaoticMatchRef.current = beginChaoticMatch;
   lobbyStateRef.current = { mode, profile, room };
 
@@ -369,45 +409,24 @@ export default function App(): JSX.Element {
 
           {room && (
             <div className="room-box">
-              {room.roomKind === "chaotic" && room.status === "waiting" && profile && isChaoticWaitingHost(room, profile.sessionId) && (
-                <div className="chaotic-h-banner" role="status" aria-live="polite">
-                  <span className="chaotic-h-banner-key" aria-hidden="true">
-                    H
-                  </span>
-                  <div className="chaotic-h-banner-copy">
-                    <strong>Press the H key</strong> once at least two people are in this room (you + a guest). It works
-                    anywhere on this page while you are the host.
-                    <span className="chaotic-h-banner-sub">
-                      With two or more people in the room, press <strong>H</strong>. To start alone, use the red button
-                      below.
-                    </span>
-                  </div>
-                </div>
-              )}
-              {room.roomKind === "chaotic" && room.status === "waiting" && profile && !isChaoticWaitingHost(room, profile.sessionId) && (
-                <div className="chaotic-wait-banner" role="status">
-                  Waiting for the <strong>host</strong> to start the match.
-                </div>
-              )}
               <div className="inline">
                 <strong>Room Code: {room.roomCode}</strong>
                 <span style={{ marginLeft: 8 }}>Mode: {room.roomKind === "chaotic" ? "Chaotic co-op" : "1v1"}</span>
                 <button onClick={() => void copyRoomCode()}>Copy Code</button>
               </div>
-              <p>Status: {room.status === "waiting" ? "Waiting for players..." : room.status}</p>
+              <p>
+                Status:{" "}
+                {room.status === "waiting" && room.roomKind === "versus" && room.players.length === 2
+                  ? "Ready — host starts the match with the green button below."
+                  : room.status === "waiting"
+                    ? "Waiting for players..."
+                    : room.status}
+              </p>
               <p>
                 Connected: {room.players.filter((player) => player.connected).length}
                 {room.roomKind === "versus" ? " / 2 max" : " — unlimited players"}
               </p>
-              {room.roomKind === "chaotic" && room.status === "waiting" && profile && isChaoticWaitingHost(room, profile.sessionId) && (
-                <div className="chaotic-start-host">
-                  <p className="chaotic-start-host-title">You are the host — start the match when you are ready.</p>
-                  <button type="button" className="chaotic-host-start" onClick={() => void beginChaoticMatch()}>
-                    Start chaotic match
-                  </button>
-                </div>
-              )}
-              <ul>
+              <ul className="room-player-list">
                 {room.players.map((player) => (
                   <li key={player.id}>
                     {player.nickname} {player.isHost ? "(HOST)" : "(PLAYER)"} {player.connected ? "- ONLINE" : "- OFFLINE"}
@@ -417,6 +436,49 @@ export default function App(): JSX.Element {
             </div>
           )}
           {error && <p className="error">{error}</p>}
+          {room && room.roomKind === "versus" && room.players.length === 2 && profile && (
+            <div className="versus-panel-footer">
+              {room.status === "waiting" && isVersusWaitingHost(room, profile.sessionId) && (
+                <>
+                  <button type="button" className="versus-mega-start" onClick={() => void beginVersusMatch()}>
+                    START 1v1 MATCH
+                  </button>
+                  <p className="versus-mega-sub">Host: both players are in — tap to begin (1v1 no longer auto-starts).</p>
+                </>
+              )}
+              {room.status === "waiting" && !isVersusWaitingHost(room, profile.sessionId) && (
+                <p className="versus-footer-guest">
+                  1v1 lobby: wait for the <strong>host</strong> to press <strong>START 1v1 MATCH</strong>.
+                </p>
+              )}
+              {room.status === "running" && (
+                <>
+                  <button type="button" className="versus-enter-btn" onClick={() => void tryEnterVersusMatch()}>
+                    ENTER 1v1 MATCH
+                  </button>
+                  <p className="versus-mega-sub">Tap if the game did not open automatically after the host started.</p>
+                </>
+              )}
+            </div>
+          )}
+          {room && room.roomKind === "chaotic" && room.status === "waiting" && profile && (
+            <div className="chaotic-panel-footer">
+              {isChaoticWaitingHost(room, profile.sessionId) ? (
+                <>
+                  <button type="button" className="chaotic-mega-start" onClick={() => void beginChaoticMatch()}>
+                    START CHAOTIC MATCH
+                  </button>
+                  <p className="chaotic-mega-sub">
+                    Host: use this button (big red). Or press <strong>H</strong> when two or more players are in the room.
+                  </p>
+                </>
+              ) : (
+                <p className="chaotic-footer-guest">
+                  Chaotic lobby: wait for the <strong>host</strong> to start the match.
+                </p>
+              )}
+            </div>
+          )}
         </section>
       )}
 

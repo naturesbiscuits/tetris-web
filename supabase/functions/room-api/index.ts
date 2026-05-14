@@ -13,7 +13,8 @@ interface RoomApiRequest {
     | "leave_room"
     | "report_game_over"
     | "get_room"
-    | "start_chaotic_match";
+    | "start_chaotic_match"
+    | "start_versus_match";
   sessionId: string;
   nickname?: string;
   roomCode?: string;
@@ -258,11 +259,8 @@ async function joinRoom(sessionId: string, nickname?: string, roomCode?: string)
     }
   }
 
-  const newCount = snapshot.players.length + (existingPlayer ? 0 : 1);
-  let nextStatus: RoomStatus = snapshot.status;
-  if (snapshot.roomKind === "versus" && newCount >= 2) {
-    nextStatus = "running";
-  }
+  const nextStatus: RoomStatus = snapshot.status;
+  // Versus rooms stay "waiting" until the host calls start_versus_match.
   const { error: statusError } = await supabase
     .from("multiplayer_rooms")
     .update({ status: nextStatus, updated_at: new Date().toISOString() })
@@ -339,7 +337,30 @@ async function startChaoticMatch(sessionId: string, roomCode?: string) {
   const snapshot = await getRoomSnapshot(normalizedCode);
   if (!snapshot) throw new Error("Room not found");
   if (snapshot.roomKind !== "chaotic") throw new Error("Not a chaotic co-op room");
-  if (snapshot.hostId !== sessionId) throw new Error("Only the host can start the match");
+  const hid = (snapshot.hostId ?? "").trim().toLowerCase();
+  const sid = sessionId.trim().toLowerCase();
+  if (hid !== sid) throw new Error("Only the host can start the match");
+  if (snapshot.status !== "waiting") throw new Error("Match already started or finished");
+  const { error } = await supabase
+    .from("multiplayer_rooms")
+    .update({ status: "running", updated_at: new Date().toISOString() })
+    .eq("room_code", normalizedCode);
+  if (error) throw error;
+  return getRoomSnapshot(normalizedCode);
+}
+
+async function startVersusMatch(sessionId: string, roomCode?: string) {
+  if (!roomCode) throw new Error("Room code required");
+  const normalizedCode = roomCode.trim().toUpperCase();
+  const snapshot = await getRoomSnapshot(normalizedCode);
+  if (!snapshot) throw new Error("Room not found");
+  if (snapshot.roomKind !== "versus") throw new Error("Not a 1v1 room");
+  if (snapshot.players.length < 2) throw new Error("Need two players");
+  const hid = (snapshot.hostId ?? "").trim().toLowerCase();
+  const sid = sessionId.trim().toLowerCase();
+  if (hid !== sid) throw new Error("Only the host can start the match");
+  if (snapshot.status === "finished") throw new Error("Match already finished");
+  if (snapshot.status === "running") return snapshot;
   if (snapshot.status !== "waiting") throw new Error("Match already started or finished");
   const { error } = await supabase
     .from("multiplayer_rooms")
@@ -388,6 +409,10 @@ Deno.serve(async (request) => {
       }
       case "start_chaotic_match": {
         const room = await startChaoticMatch(body.sessionId, body.roomCode);
+        return json(200, { room });
+      }
+      case "start_versus_match": {
+        const room = await startVersusMatch(body.sessionId, body.roomCode);
         return json(200, { room });
       }
       default:

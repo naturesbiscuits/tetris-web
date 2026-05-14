@@ -68,6 +68,14 @@ export async function startChaoticMatch(profile: ClientProfile, roomCode: string
   });
 }
 
+export async function startVersusMatch(profile: ClientProfile, roomCode: string): Promise<RoomSnapshot> {
+  return requireRoomResponse({
+    action: "start_versus_match",
+    sessionId: profile.sessionId,
+    roomCode
+  });
+}
+
 export async function joinRoom(profile: ClientProfile, roomCode: string): Promise<RoomSnapshot> {
   return requireRoomResponse({
     action: "join_room",

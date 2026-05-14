@@ -87,7 +87,8 @@ export interface RoomApiRequest {
     | "leave_room"
     | "report_game_over"
     | "get_room"
-    | "start_chaotic_match";
+    | "start_chaotic_match"
+    | "start_versus_match";
   sessionId: string;
   nickname?: string;
   roomCode?: string;
