@@ -126,6 +126,46 @@ button:hover {
   margin: 0;
 }
 
+.connectivity-probe {
+  border: 1px dashed var(--edge);
+  border-radius: 8px;
+  padding: 10px;
+  background: #0b1324;
+}
+
+.connectivity-probe__caption {
+  caption-side: top;
+  text-align: left;
+  font-size: 0.78rem;
+  color: var(--muted);
+  margin-bottom: 8px;
+}
+
+.connectivity-probe__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.connectivity-probe__table th,
+.connectivity-probe__table td {
+  border: 1px solid var(--edge);
+  padding: 8px 10px;
+  text-align: center;
+}
+
+.connectivity-probe__table th {
+  background: #111827;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.connectivity-probe__hint {
+  margin: 8px 0 0;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
 .game-shell {
   display: grid;
   gap: 10px;

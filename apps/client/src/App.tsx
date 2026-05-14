@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { ClientProfile, RoomSnapshot } from "@tetris/core";
+import { ConnectivityProbe } from "./components/ConnectivityProbe";
 import { GameViewport } from "./components/GameViewport";
 import {
   SupabaseRoomSession,
@@ -198,6 +199,7 @@ export default function App(): JSX.Element {
 
       {mode !== "game" && (
         <section className="panel">
+          <ConnectivityProbe />
           <label>
             Nickname
             <div className="inline">
