@@ -1,6 +1,6 @@
 import {
-  BOARD_HEIGHT,
-  BOARD_WIDTH,
+  CHAOTIC_BOARD_HEIGHT,
+  CHAOTIC_BOARD_WIDTH,
   ChaoticSharedBoardEngine,
   PlayerEngine,
   getCells,
@@ -172,13 +172,13 @@ export interface ChaoticCoopControllerOptions {
 }
 
 function emptyBoard(): Uint8Array {
-  return new Uint8Array(BOARD_WIDTH * BOARD_HEIGHT);
+  return new Uint8Array(CHAOTIC_BOARD_WIDTH * CHAOTIC_BOARD_HEIGHT);
 }
 
 function pieceFitsBoardOnly(board: Uint8Array, piece: PieceState): boolean {
   for (const [x, y] of getCells(piece)) {
-    if (x < 0 || x >= BOARD_WIDTH || y >= BOARD_HEIGHT) return false;
-    if (y >= 0 && board[y * BOARD_WIDTH + x] !== 0) return false;
+    if (x < 0 || x >= CHAOTIC_BOARD_WIDTH || y >= CHAOTIC_BOARD_HEIGHT) return false;
+    if (y >= 0 && board[y * CHAOTIC_BOARD_WIDTH + x] !== 0) return false;
   }
   return true;
 }
@@ -311,7 +311,7 @@ export class ChaoticCoopController implements GameController {
     const local = sync?.actives[this.localPlayerId];
     return {
       board,
-      active: local ?? { type: "I", x: 4, y: 1, rotation: 0 },
+      active: local ?? { type: "I", x: Math.floor(CHAOTIC_BOARD_WIDTH / 2) - 1, y: 1, rotation: 0 },
       ghostY: local ? (this.isHost && this.engine ? this.engine.getGhostY(this.localPlayerId) : guestGhostY(board, local)) : 0,
       hold: null,
       queue: [],

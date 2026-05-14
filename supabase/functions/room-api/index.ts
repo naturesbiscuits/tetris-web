@@ -35,8 +35,6 @@ interface RoomSnapshot {
   roomKind: RoomKind;
 }
 
-const CHAOTIC_MAX_PLAYERS = 16;
-
 const supabase = createClient(
   Deno.env.get("SUPABASE_URL") ?? "",
   Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
@@ -222,8 +220,9 @@ async function joinRoom(sessionId: string, nickname?: string, roomCode?: string)
 
   const existingPlayer = snapshot.players.find((player) => player.id === sessionId);
   if (!existingPlayer) {
-    const cap = snapshot.roomKind === "chaotic" ? CHAOTIC_MAX_PLAYERS : 2;
-    if (snapshot.players.length >= cap) throw new Error("Room is full");
+    if (snapshot.roomKind === "versus" && snapshot.players.length >= 2) {
+      throw new Error("Room is full");
+    }
     let chosenNickname = profile.nickname;
     let insertError: { code?: string; message?: string } | null = null;
     for (let attempt = 0; attempt < 6; attempt += 1) {

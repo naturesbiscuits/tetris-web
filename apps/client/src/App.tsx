@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { CHAOTIC_MAX_PLAYERS, type ClientProfile, type RoomSnapshot } from "@tetris/core";
+import type { ClientProfile, RoomSnapshot } from "@tetris/core";
 import { ConnectivityProbe } from "./components/ConnectivityProbe";
 import { GameViewport } from "./components/GameViewport";
 import {
@@ -334,8 +334,8 @@ export default function App(): JSX.Element {
               </div>
               <p>Status: {room.status === "waiting" ? "Waiting for players..." : room.status}</p>
               <p>
-                Connected Players: {room.players.filter((player) => player.connected).length}/
-                {room.roomKind === "chaotic" ? CHAOTIC_MAX_PLAYERS : 2}
+                Connected: {room.players.filter((player) => player.connected).length}
+                {room.roomKind === "versus" ? " / 2 max" : " — unlimited players"}
               </p>
               {room.roomKind === "chaotic" && room.status === "waiting" && room.hostId === profile?.sessionId && (
                 <p>

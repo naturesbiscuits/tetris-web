@@ -1,5 +1,14 @@
 import Phaser from "phaser";
-import { BOARD_HEIGHT, BOARD_WIDTH, VISIBLE_HEIGHT, getCells, type PieceType } from "@tetris/core";
+import {
+  BOARD_HEIGHT,
+  BOARD_WIDTH,
+  CHAOTIC_BOARD_HEIGHT,
+  CHAOTIC_BOARD_WIDTH,
+  CHAOTIC_VISIBLE_HEIGHT,
+  VISIBLE_HEIGHT,
+  getCells,
+  type PieceType
+} from "@tetris/core";
 import type { FrameSnapshot } from "../state/controllers";
 
 const COLORS: Record<number, number> = {
@@ -24,17 +33,36 @@ function chaoticPlayerColor(playerId: string, index: number): number {
   return CHAOTIC_PLAYER_COLORS[(h + index) % CHAOTIC_PLAYER_COLORS.length]!;
 }
 
+interface BoardGridSpec {
+  width: number;
+  height: number;
+  visibleHeight: number;
+}
+
+const STANDARD_GRID: BoardGridSpec = {
+  width: BOARD_WIDTH,
+  height: BOARD_HEIGHT,
+  visibleHeight: VISIBLE_HEIGHT
+};
+
+const CHAOTIC_GRID: BoardGridSpec = {
+  width: CHAOTIC_BOARD_WIDTH,
+  height: CHAOTIC_BOARD_HEIGHT,
+  visibleHeight: CHAOTIC_VISIBLE_HEIGHT
+};
+
 function drawBoard(
   graphics: Phaser.GameObjects.Graphics,
   board: Uint8Array,
   xOffset: number,
   yOffset: number,
-  cellSize: number
+  cellSize: number,
+  grid: BoardGridSpec = STANDARD_GRID
 ): void {
-  const hiddenRows = BOARD_HEIGHT - VISIBLE_HEIGHT;
-  for (let y = hiddenRows; y < BOARD_HEIGHT; y += 1) {
-    for (let x = 0; x < BOARD_WIDTH; x += 1) {
-      const value = board[y * BOARD_WIDTH + x];
+  const hiddenRows = grid.height - grid.visibleHeight;
+  for (let y = hiddenRows; y < grid.height; y += 1) {
+    for (let x = 0; x < grid.width; x += 1) {
+      const value = board[y * grid.width + x];
       graphics.fillStyle(COLORS[value] ?? 0xffffff, value === 0 ? 0.24 : 1);
       graphics.fillRect(xOffset + x * cellSize, yOffset + (y - hiddenRows) * cellSize, cellSize - 1, cellSize - 1);
     }
@@ -48,9 +76,10 @@ function drawPiece(
   yOffset: number,
   cellSize: number,
   alpha = 1,
-  fillColorOverride?: number
+  fillColorOverride?: number,
+  grid: BoardGridSpec = STANDARD_GRID
 ): void {
-  const hiddenRows = BOARD_HEIGHT - VISIBLE_HEIGHT;
+  const hiddenRows = grid.height - grid.visibleHeight;
   const pieceState = {
     type: piece.type,
     x: piece.x,
@@ -62,7 +91,7 @@ function drawPiece(
   const fillColor = fillColorOverride ?? COLORS[valueByType[piece.type]];
   graphics.fillStyle(fillColor, alpha);
   for (const [x, y] of cells) {
-    if (y < hiddenRows || y >= BOARD_HEIGHT) continue;
+    if (y < hiddenRows || y >= grid.height) continue;
     graphics.fillRect(xOffset + x * cellSize, yOffset + (y - hiddenRows) * cellSize, cellSize - 1, cellSize - 1);
   }
 }
@@ -96,15 +125,20 @@ export function createPhaserGame(container: HTMLDivElement, getSnapshot: Snapsho
       this.graphics.fillRect(0, 0, 520, 460);
 
       if (snapshot.mode === "chaotic" && snapshot.chaotic) {
-        const cx = 120;
-        const chaoticCell = 20;
-        drawBoard(this.graphics, snapshot.chaotic.board, cx, 40, chaoticCell);
+        const chaoticCell = Math.max(
+          11,
+          Math.min(Math.floor((500 - 24) / CHAOTIC_GRID.width), Math.floor(380 / CHAOTIC_GRID.visibleHeight))
+        );
+        const cw = CHAOTIC_GRID.width * chaoticCell;
+        const cx = (520 - cw) / 2;
+        const cy = 40;
+        drawBoard(this.graphics, snapshot.chaotic.board, cx, cy, chaoticCell, CHAOTIC_GRID);
         snapshot.chaotic.players.forEach((p, idx) => {
           if (!p.active) return;
           const hue = chaoticPlayerColor(p.playerId, idx);
-          drawPiece(this.graphics, p.active, cx, 40, chaoticCell, 1, hue);
+          drawPiece(this.graphics, p.active, cx, cy, chaoticCell, 1, hue, CHAOTIC_GRID);
           if (p.isLocal) {
-            drawPiece(this.graphics, { ...p.active, y: p.ghostY }, cx, 40, chaoticCell, 0.22, hue);
+            drawPiece(this.graphics, { ...p.active, y: p.ghostY }, cx, cy, chaoticCell, 0.22, hue, CHAOTIC_GRID);
           }
         });
         this.youLabel.setText("CHAOTIC CO-OP — SHARED GRID");

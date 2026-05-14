@@ -1,6 +1,6 @@
 import {
-  BOARD_HEIGHT,
-  BOARD_WIDTH,
+  CHAOTIC_BOARD_HEIGHT,
+  CHAOTIC_BOARD_WIDTH,
   SCORE_HARD_DROP,
   SCORE_LINE_CLEAR,
   SCORE_SOFT_DROP
@@ -12,7 +12,9 @@ import type { InputKind, PieceState, PieceType } from "./types.js";
 
 const MAX_QUEUE = 8;
 
-export const CHAOTIC_MAX_PLAYERS = 16;
+function spawnBaseX(): number {
+  return Math.floor(CHAOTIC_BOARD_WIDTH / 2) - 1;
+}
 
 function rotateValue(rotation: number, delta: number): number {
   return (((rotation + delta) % 4) + 4) % 4;
@@ -50,7 +52,7 @@ interface RuntimePlayer {
  */
 export class ChaoticSharedBoardEngine {
   readonly orderedPlayerIds: string[];
-  private readonly board = new Uint8Array(BOARD_WIDTH * BOARD_HEIGHT);
+  private readonly board = new Uint8Array(CHAOTIC_BOARD_WIDTH * CHAOTIC_BOARD_HEIGHT);
   private readonly players = new Map<string, RuntimePlayer>();
   private simTick = 0;
 
@@ -61,8 +63,8 @@ export class ChaoticSharedBoardEngine {
     private readonly roomSeed: number,
     roster: { id: string; displayName: string }[]
   ) {
-    if (roster.length < 1 || roster.length > CHAOTIC_MAX_PLAYERS) {
-      throw new Error("Chaotic roster size invalid");
+    if (roster.length < 1) {
+      throw new Error("Chaotic roster cannot be empty");
     }
     this.orderedPlayerIds = roster.map((p) => p.id).sort();
     let spawnIndex = 0;
@@ -71,7 +73,7 @@ export class ChaoticSharedBoardEngine {
       const rng = new DeterministicRng((roomSeed ^ hashSessionId(id)) >>> 0);
       const rt: RuntimePlayer = {
         displayName: meta.displayName,
-        active: { type: "I", x: 4, y: 1, rotation: 0 },
+        active: { type: "I", x: spawnBaseX(), y: 1, rotation: 0 },
         hold: null,
         queue: [],
         bag: [],
@@ -89,7 +91,7 @@ export class ChaoticSharedBoardEngine {
   }
 
   private getIndex(x: number, y: number): number {
-    return y * BOARD_WIDTH + x;
+    return y * CHAOTIC_BOARD_WIDTH + x;
   }
 
   private refillBag(rt: RuntimePlayer): void {
@@ -120,7 +122,7 @@ export class ChaoticSharedBoardEngine {
   private trySpawnPieceAt(rt: RuntimePlayer, type: PieceType, index: number): void {
     const offsets = [0, -1, 1, -2, 2, -3, 3];
     const ox = offsets[index % offsets.length] ?? 0;
-    rt.active = { type, x: 4 + ox, y: 1, rotation: 0 };
+    rt.active = { type, x: spawnBaseX() + ox, y: 1, rotation: 0 };
     rt.canHold = true;
     if (!this.isPositionValidFor(rt, rt.active)) {
       for (const kick of [-1, 1, -2, 2]) {
@@ -146,7 +148,7 @@ export class ChaoticSharedBoardEngine {
     for (const [pid, pr] of this.players) {
       if (pid === excludeId || !pr.alive) continue;
       for (const [x, y] of getCells(pr.active)) {
-        if (y >= 0 && y < BOARD_HEIGHT && x >= 0 && x < BOARD_WIDTH) {
+        if (y >= 0 && y < CHAOTIC_BOARD_HEIGHT && x >= 0 && x < CHAOTIC_BOARD_WIDTH) {
           blocked.add(this.getIndex(x, y));
         }
       }
@@ -165,7 +167,7 @@ export class ChaoticSharedBoardEngine {
     const pid = this.playerIdFor(rt);
     const blockOthers = this.cellsBlockingOthers(pid);
     for (const [x, y] of getCells(piece)) {
-      if (x < 0 || x >= BOARD_WIDTH || y >= BOARD_HEIGHT) {
+      if (x < 0 || x >= CHAOTIC_BOARD_WIDTH || y >= CHAOTIC_BOARD_HEIGHT) {
         return false;
       }
       if (y >= 0 && this.board[this.getIndex(x, y)] !== 0) {
@@ -224,9 +226,9 @@ export class ChaoticSharedBoardEngine {
 
   private clearLines(): number {
     let cleared = 0;
-    for (let y = BOARD_HEIGHT - 1; y >= 0; y -= 1) {
+    for (let y = CHAOTIC_BOARD_HEIGHT - 1; y >= 0; y -= 1) {
       let full = true;
-      for (let x = 0; x < BOARD_WIDTH; x += 1) {
+      for (let x = 0; x < CHAOTIC_BOARD_WIDTH; x += 1) {
         if (this.board[this.getIndex(x, y)] === 0) {
           full = false;
           break;
@@ -235,11 +237,11 @@ export class ChaoticSharedBoardEngine {
       if (!full) continue;
       cleared += 1;
       for (let row = y; row > 0; row -= 1) {
-        for (let x = 0; x < BOARD_WIDTH; x += 1) {
+        for (let x = 0; x < CHAOTIC_BOARD_WIDTH; x += 1) {
           this.board[this.getIndex(x, row)] = this.board[this.getIndex(x, row - 1)];
         }
       }
-      for (let x = 0; x < BOARD_WIDTH; x += 1) {
+      for (let x = 0; x < CHAOTIC_BOARD_WIDTH; x += 1) {
         this.board[this.getIndex(x, 0)] = 0;
       }
       y += 1;
