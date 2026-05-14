@@ -35,14 +35,15 @@ export function ConnectivityProbe(): JSX.Element {
       };
     }
 
-    void supabase
-      .schema("public")
-      .from("connectivity_display")
-      .select("id,n")
-      .eq("id", 1)
-      .maybeSingle()
-      .returns<ConnectivityDisplayRow>()
-      .then(({ data, error }) => {
+    void (async () => {
+      try {
+        const { data, error } = await supabase
+          .schema("public")
+          .from("connectivity_display")
+          .select("id,n")
+          .eq("id", 1)
+          .maybeSingle()
+          .returns<ConnectivityDisplayRow>();
         if (cancelled) return;
         if (error) {
           setStatus("error");
@@ -63,13 +64,13 @@ export function ConnectivityProbe(): JSX.Element {
         setDiagnostic(null);
         setN(data.n);
         setStatus("ok");
-      })
-      .catch((err: unknown) => {
+      } catch (err: unknown) {
         if (cancelled) return;
         setStatus("error");
         setN(null);
         setDiagnostic(err instanceof Error ? err.message : String(err));
-      });
+      }
+    })();
     return () => {
       cancelled = true;
     };
