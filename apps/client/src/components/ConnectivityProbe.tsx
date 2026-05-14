@@ -18,7 +18,7 @@ export function ConnectivityProbe(): JSX.Element {
     const anon = import.meta.env.VITE_SUPABASE_ANON_KEY;
     if (!url?.trim() || !anon?.trim()) {
       setDiagnostic(
-        "VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY is missing at build time. Set them in Vercel (or .env) and redeploy."
+        "VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY was not set when this bundle was built. In Vercel: Project → Settings → Environment Variables → add both for Production (and Preview if needed) → Redeploy. Names must start with VITE_."
       );
       setStatus("error");
       setN(null);

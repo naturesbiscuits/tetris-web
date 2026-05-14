@@ -63,42 +63,42 @@ Client:
 
 ## Supabase Setup
 
-Create a Supabase project, then add these frontend env vars in Vercel:
+Create a Supabase project, then wire the client and Edge Function as below.
 
-```bash
-VITE_SUPABASE_URL=https://your-project-id.supabase.co
-VITE_SUPABASE_ANON_KEY=your-supabase-anon-key
-```
+### Vercel (frontend) — required
 
-For Edge Functions, set this secret in Supabase:
+Vite **inlines** `VITE_*` at **build** time. If these are missing in Vercel when the build runs, the deployed app has no Supabase URL/key (you will see the connectivity probe error and `room-api` invoke failures).
 
-```bash
-SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
-```
+1. Vercel → your project → **Settings** → **Environment Variables**.
+2. Add **`VITE_SUPABASE_URL`** = Supabase **Project URL** (e.g. `https://xxxx.supabase.co`, no trailing path).
+3. Add **`VITE_SUPABASE_ANON_KEY`** = Supabase **anon public** key (Project Settings → API).
+4. Enable them for **Production** (and **Preview** if you use preview deployments).
+5. **Redeploy** (Deployments → … on latest → Redeploy, or push a commit).
+
+See also [apps/client/.env.example](apps/client/.env.example).
+
+### Supabase (Edge Function `room-api`)
+
+1. Set the function secret **`SUPABASE_SERVICE_ROLE_KEY`** to your project’s **service role** key (Supabase Dashboard → Project Settings → API; never expose this in `VITE_*` or client code).
+2. Deploy the function from the repo root (CLI logged in and project linked): `npm run functions:deploy` (runs `supabase functions deploy room-api`).
+3. **`verify_jwt`** must be **off** for `room-api` so the browser can call it with only the anon key (this repo’s [supabase/config.toml](supabase/config.toml) has `[functions.room-api] verify_jwt = false`; mirror that for hosted projects when deploying or in Dashboard if your platform exposes it).
 
 Apply the SQL schema from:
 
-- [supabase/migrations/20260513190000_init_event_multiplayer.sql](C:/Users/flores%20kyle/Desktop/github/tetris-website/tetris-web/supabase/migrations/20260513190000_init_event_multiplayer.sql)
+- [supabase/migrations/20260513190000_init_event_multiplayer.sql](supabase/migrations/20260513190000_init_event_multiplayer.sql)
 
-Deploy the Edge Function from:
+Function source:
 
-- [supabase/functions/room-api/index.ts](C:/Users/flores%20kyle/Desktop/github/tetris-website/tetris-web/supabase/functions/room-api/index.ts)
-
-Optional local env example:
-
-- [apps/client/.env.example](C:/Users/flores%20kyle/Desktop/github/tetris-website/tetris-web/apps/client/.env.example)
+- [supabase/functions/room-api/index.ts](supabase/functions/room-api/index.ts)
 
 ## Vercel
 
-Frontend build command:
+This repo’s [vercel.json](vercel.json) uses:
 
-```bash
-npm run build --workspace=@tetris/client
-```
+- **Build command:** `npm run build:vercel` (from monorepo root)
+- **Output directory:** `apps/client/dist`
 
-Frontend output:
-
-`apps/client/dist`
+Ensure the Vercel project **root directory** is the `tetris-web` repo root (where `package.json` and `vercel.json` live), not `apps/client` only, unless you have adjusted settings accordingly.
 
 ## Notes
 

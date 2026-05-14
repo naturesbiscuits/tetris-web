@@ -16,7 +16,12 @@ function roomApiErrorMessage(error: { message: string } | null, data: RoomApiRes
   }
   const msg = error?.message ?? "Room API request failed";
   if (msg.includes("Failed to send a request to the Edge Function")) {
-    return `Room API unreachable: deploy the \`room-api\` Edge Function to Supabase, confirm Vercel has VITE_SUPABASE_URL (base URL only) and VITE_SUPABASE_ANON_KEY, and redeploy the function after setting verify_jwt = false for room-api. SDK detail: ${msg}`;
+    return (
+      "Room API unreachable. Fix in order: " +
+      "(1) Vercel → Settings → Environment Variables → set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY for Production (and Preview if used), then redeploy. " +
+      "(2) Supabase → deploy `room-api` (`npm run functions:deploy` with CLI linked), set function secret SUPABASE_SERVICE_ROLE_KEY, and turn off JWT verification for `room-api` (see supabase/config.toml [functions.room-api]). " +
+      `SDK detail: ${msg}`
+    );
   }
   return msg;
 }
