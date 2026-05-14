@@ -156,6 +156,9 @@ export class MultiplayerController implements GameController {
   private announcedGameOver = false;
   private lastCombo = -1;
   private lastBackToBack = false;
+  private lastPublishedScore = -1;
+  /** Consecutive locks that cleared ≥1 line; reset on a lock with 0 lines. */
+  private lineClearStreak = 0;
   private opponentState: OpponentEventState;
 
   constructor(params: MultiplayerControllerOptions) {
@@ -214,7 +217,10 @@ export class MultiplayerController implements GameController {
 
   private async publishLocalEvents(): Promise<void> {
     const view = this.engine.getView();
-    await this.sendEvent({ type: "score_update", score: view.score });
+    if (view.score !== this.lastPublishedScore) {
+      this.lastPublishedScore = view.score;
+      await this.sendEvent({ type: "score_update", score: view.score });
+    }
 
     if (view.combo !== this.lastCombo) {
       this.lastCombo = view.combo;
@@ -229,17 +235,19 @@ export class MultiplayerController implements GameController {
     for (const event of this.engine.drainEvents()) {
       if (event.type === "lock") {
         if (event.linesCleared > 0) {
+          this.lineClearStreak += 1;
           await this.sendEvent({
             type: "line_clear",
             linesCleared: event.linesCleared,
             score: view.score
           });
-        }
-        if (event.attackSent > 0) {
-          await this.sendEvent({
-            type: "garbage_attack",
-            garbage: event.attackSent
-          });
+          // Simple garbage: every 3 consecutive line-clearing locks, send 1 garbage row (hole randomized in engine).
+          if (this.lineClearStreak >= 3) {
+            this.lineClearStreak = 0;
+            await this.sendEvent({ type: "garbage_attack", garbage: 1 });
+          }
+        } else {
+          this.lineClearStreak = 0;
         }
       }
       if (event.type === "top_out") {

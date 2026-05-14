@@ -41,11 +41,11 @@ The app does **not** synchronize:
 - rotation snapshots
 - continuous gameplay state
 
-The app **does** synchronize:
+The app **does** synchronize (compact event payloads over Realtime broadcast):
 
-- score updates
+- score updates (only when the value changes)
 - line clears
-- garbage attacks
+- garbage attacks (**1** row after **3** consecutive locks that each clear ≥1 line; one random hole per row in the local engine)
 - combo / back-to-back events
 - game over
 - winner declaration

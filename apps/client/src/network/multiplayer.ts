@@ -1,6 +1,7 @@
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import {
   type ClientProfile,
+  generateDistributedPlayerNickname,
   type MultiplayerEventPacket,
   type PresencePlayerState,
   type RoomApiRequest,
@@ -27,9 +28,7 @@ function roomApiErrorMessage(error: { message: string } | null, data: RoomApiRes
 }
 
 function randomNickname(): string {
-  const prefix = ["Player", "Guest", "TetriUser"][Math.floor(Math.random() * 3)];
-  const suffix = crypto.randomUUID().replace(/-/g, "").slice(0, 10);
-  return `${prefix}_${suffix}`;
+  return generateDistributedPlayerNickname();
 }
 
 function randomSessionId(): string {

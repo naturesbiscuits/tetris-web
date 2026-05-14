@@ -44,8 +44,8 @@ export default function App(): JSX.Element {
 
   useEffect(() => {
     let cancelled = false;
-    const storedSessionId = localStorage.getItem("tetris.sessionId") ?? undefined;
-    const storedNick = localStorage.getItem("tetris.nickname") ?? undefined;
+    const storedSessionId = sessionStorage.getItem("tetris.sessionId") ?? undefined;
+    const storedNick = sessionStorage.getItem("tetris.nickname") ?? undefined;
     setNicknameDraft(storedNick ?? "");
 
     void ensureProfile(storedSessionId, storedNick)
@@ -54,8 +54,8 @@ export default function App(): JSX.Element {
         setProfile(nextProfile);
         setNicknameDraft(nextProfile.nickname);
         setTransportState("ONLINE");
-        localStorage.setItem("tetris.sessionId", nextProfile.sessionId);
-        localStorage.setItem("tetris.nickname", nextProfile.nickname);
+        sessionStorage.setItem("tetris.sessionId", nextProfile.sessionId);
+        sessionStorage.setItem("tetris.nickname", nextProfile.nickname);
       })
       .catch((err) => {
         if (cancelled) return;
@@ -123,15 +123,15 @@ export default function App(): JSX.Element {
       const nextProfile = await ensureProfile(profile?.sessionId, nicknameDraft.trim());
       setProfile(nextProfile);
       setNicknameDraft(nextProfile.nickname);
-      localStorage.setItem("tetris.nickname", nextProfile.nickname);
+      sessionStorage.setItem("tetris.nickname", nextProfile.nickname);
     } catch (err) {
       showError(err instanceof Error ? err.message : "Unable to save nickname");
     }
   };
 
   const newGuestSession = async () => {
-    localStorage.removeItem("tetris.sessionId");
-    localStorage.removeItem("tetris.nickname");
+    sessionStorage.removeItem("tetris.sessionId");
+    sessionStorage.removeItem("tetris.nickname");
     setNicknameDraft("");
     setProfile(null);
     setTransportState("CONNECTING");
@@ -139,8 +139,8 @@ export default function App(): JSX.Element {
       const nextProfile = await ensureProfile(undefined, undefined);
       setProfile(nextProfile);
       setNicknameDraft(nextProfile.nickname);
-      localStorage.setItem("tetris.sessionId", nextProfile.sessionId);
-      localStorage.setItem("tetris.nickname", nextProfile.nickname);
+      sessionStorage.setItem("tetris.sessionId", nextProfile.sessionId);
+      sessionStorage.setItem("tetris.nickname", nextProfile.nickname);
       setTransportState("ONLINE");
     } catch (err) {
       setTransportState("ERROR");

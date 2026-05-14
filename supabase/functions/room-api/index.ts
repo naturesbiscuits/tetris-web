@@ -46,8 +46,34 @@ function randomSuffix(): string {
 function normalizeNickname(nickname?: string): string {
   const trimmed = (nickname ?? "").trim().slice(0, 20);
   if (trimmed) return trimmed;
-  const prefix = ["Player", "Guest", "TetriUser"][Math.floor(Math.random() * 3)];
-  return `${prefix}_${randomSuffix()}`;
+  const prefixes = [
+    "Shard",
+    "Replica",
+    "RaftNode",
+    "MapStage",
+    "VectorClk",
+    "Barrier",
+    "Quorum",
+    "Epoch",
+    "Worker",
+    "MapReduce",
+    "Lamport",
+    "Merkle",
+    "Actor",
+    "CAS",
+    "LockFree",
+    "Pipeline",
+    "Gossip",
+    "SplitBrain",
+    "TwoPhase",
+    "Byzantine",
+    "CRDT",
+    "Reducer",
+    "FanOut",
+    "Backpressure"
+  ];
+  const pick = prefixes[Math.floor(Math.random() * prefixes.length)]!;
+  return `${pick}_${randomSuffix()}`.slice(0, 20);
 }
 
 function isUniqueNicknameViolation(error: { code?: string; message?: string }): boolean {
