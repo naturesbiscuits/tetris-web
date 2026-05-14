@@ -1,3 +1,5 @@
+import type { InputKind, PieceType } from "./types.js";
+
 export interface ClientProfile {
   sessionId: string;
   nickname: string;
@@ -10,11 +12,14 @@ export interface RoomPlayer {
   connected: boolean;
 }
 
+export type RoomKind = "versus" | "chaotic";
+
 export interface RoomSnapshot {
   roomCode: string;
   status: "waiting" | "running" | "finished";
   hostId: string;
   players: RoomPlayer[];
+  roomKind: RoomKind;
 }
 
 export type MultiplayerEventType =
@@ -24,7 +29,19 @@ export type MultiplayerEventType =
   | "combo"
   | "b2b"
   | "game_over"
-  | "winner_declared";
+  | "winner_declared"
+  | "chaotic_input"
+  | "chaotic_sync";
+
+/** Authoritative shared-grid state broadcast by the room host (chaotic co-op). */
+export interface ChaoticSyncPayload {
+  board: number[];
+  actives: Record<string, { type: PieceType; x: number; y: number; rotation: number } | null>;
+  lines: number;
+  score: number;
+  tick: number;
+  gameOver: boolean;
+}
 
 export interface MultiplayerEventPacket {
   type: MultiplayerEventType;
@@ -36,13 +53,26 @@ export interface MultiplayerEventPacket {
   combo?: number;
   backToBack?: boolean;
   winnerId?: string | null;
+  /** When type === "chaotic_input": input applied on the host simulation. */
+  inputKind?: InputKind;
+  /** When type === "chaotic_sync": full shared-board snapshot for guests. */
+  chaoticSync?: ChaoticSyncPayload;
 }
 
 export interface RoomApiRequest {
-  action: "ensure_profile" | "create_room" | "join_room" | "leave_room" | "report_game_over" | "get_room";
+  action:
+    | "ensure_profile"
+    | "create_room"
+    | "join_room"
+    | "leave_room"
+    | "report_game_over"
+    | "get_room"
+    | "start_chaotic_match";
   sessionId: string;
   nickname?: string;
   roomCode?: string;
+  /** When creating a room: `"chaotic"` for shared-grid co-op (many players). */
+  roomKind?: RoomKind;
 }
 
 export interface RoomApiResponse {

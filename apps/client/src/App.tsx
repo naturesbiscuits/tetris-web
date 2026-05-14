@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { ClientProfile, RoomSnapshot } from "@tetris/core";
+import { CHAOTIC_MAX_PLAYERS, type ClientProfile, type RoomSnapshot } from "@tetris/core";
 import { ConnectivityProbe } from "./components/ConnectivityProbe";
 import { GameViewport } from "./components/GameViewport";
 import {
@@ -9,14 +9,19 @@ import {
   getRoom,
   joinRoom,
   leaveRoom,
-  reportGameOver
+  reportGameOver,
+  startChaoticMatch
 } from "./network/multiplayer";
-import { MultiplayerController, SoloController, type GameController } from "./state/controllers";
+import { ChaoticCoopController, MultiplayerController, SoloController, type GameController } from "./state/controllers";
 
 type Mode = "menu" | "lobby" | "game";
 
-function canStartMatch(room: RoomSnapshot | null): room is RoomSnapshot {
-  return !!room && room.status === "running" && room.players.length === 2;
+function canStartVersusMatch(room: RoomSnapshot | null): room is RoomSnapshot {
+  return !!room && room.roomKind === "versus" && room.status === "running" && room.players.length === 2;
+}
+
+function canStartChaoticMatch(room: RoomSnapshot | null): room is RoomSnapshot {
+  return !!room && room.roomKind === "chaotic" && room.status === "running" && room.players.length >= 2;
 }
 
 export default function App(): JSX.Element {
@@ -71,8 +76,29 @@ export default function App(): JSX.Element {
     };
   }, []);
 
+  const maybeStartChaoticMatch = async (snapshot: RoomSnapshot) => {
+    if (!profile || !canStartChaoticMatch(snapshot) || controllerRef.current instanceof ChaoticCoopController) {
+      return;
+    }
+    const controller = new ChaoticCoopController({
+      players: snapshot.players,
+      localPlayerId: profile.sessionId,
+      hostSessionId: snapshot.hostId,
+      sendEvent: async (payload) => {
+        await roomSessionRef.current?.sendEvent(payload);
+      },
+      onGameOver: async () => {
+        await reportGameOver(profile, snapshot.roomCode);
+        await roomSessionRef.current?.declareWinner(null);
+      }
+    });
+    controller.start();
+    setController(controller);
+    setMode("game");
+  };
+
   const maybeStartMatch = async (snapshot: RoomSnapshot) => {
-    if (!profile || !canStartMatch(snapshot) || controllerRef.current instanceof MultiplayerController) {
+    if (!profile || !canStartVersusMatch(snapshot) || controllerRef.current instanceof MultiplayerController) {
       return;
     }
     const controller = new MultiplayerController({
@@ -98,9 +124,19 @@ export default function App(): JSX.Element {
       onRoomSync: (nextRoom) => {
         setRoom(nextRoom);
         void maybeStartMatch(nextRoom);
+        void maybeStartChaoticMatch(nextRoom);
       },
       onMultiplayerEvent: (event) => {
         const controller = controllerRef.current;
+        if (controller instanceof ChaoticCoopController) {
+          if (event.type === "chaotic_input") {
+            controller.handleRemoteChaoticInput(event);
+          }
+          if (event.type === "chaotic_sync") {
+            controller.applyChaoticSync(event);
+          }
+          return;
+        }
         if (controller instanceof MultiplayerController) {
           controller.handleMultiplayerEvent(event);
         }
@@ -158,12 +194,35 @@ export default function App(): JSX.Element {
   const hostGame = async () => {
     if (!profile) return;
     try {
-      const snapshot = await createRoom(profile);
+      const snapshot = await createRoom(profile, "versus");
       setRoom(snapshot);
       await connectToRoom(snapshot);
       setMode("lobby");
     } catch (err) {
       showError(err instanceof Error ? err.message : "Unable to create room");
+    }
+  };
+
+  const hostChaoticCoop = async () => {
+    if (!profile) return;
+    try {
+      const snapshot = await createRoom(profile, "chaotic");
+      setRoom(snapshot);
+      await connectToRoom(snapshot);
+      setMode("lobby");
+    } catch (err) {
+      showError(err instanceof Error ? err.message : "Unable to create chaotic room");
+    }
+  };
+
+  const beginChaoticMatch = async () => {
+    if (!profile || !room || room.roomKind !== "chaotic" || room.hostId !== profile.sessionId) return;
+    try {
+      const next = await startChaoticMatch(profile, room.roomCode);
+      setRoom(next);
+      await maybeStartChaoticMatch(next);
+    } catch (err) {
+      showError(err instanceof Error ? err.message : "Unable to start chaotic match");
     }
   };
 
@@ -191,6 +250,7 @@ export default function App(): JSX.Element {
       if (refreshed) {
         setRoom(refreshed);
         await maybeStartMatch(refreshed);
+        await maybeStartChaoticMatch(refreshed);
       }
     } catch (err) {
       showError(err instanceof Error ? err.message : "Unable to join room");
@@ -250,6 +310,9 @@ export default function App(): JSX.Element {
             <button className="primary" onClick={() => void hostGame()}>
               Host Game
             </button>
+            <button className="primary" onClick={() => void hostChaoticCoop()} title="Many players, one shared grid">
+              Host chaotic co-op
+            </button>
           </div>
 
           <div className="inline">
@@ -266,10 +329,26 @@ export default function App(): JSX.Element {
             <div className="room-box">
               <div className="inline">
                 <strong>Room Code: {room.roomCode}</strong>
+                <span style={{ marginLeft: 8 }}>Mode: {room.roomKind === "chaotic" ? "Chaotic co-op" : "1v1"}</span>
                 <button onClick={() => void copyRoomCode()}>Copy Code</button>
               </div>
-              <p>Status: {room.status === "waiting" ? "Waiting for player..." : room.status}</p>
-              <p>Connected Players: {room.players.filter((player) => player.connected).length}/2</p>
+              <p>Status: {room.status === "waiting" ? "Waiting for players..." : room.status}</p>
+              <p>
+                Connected Players: {room.players.filter((player) => player.connected).length}/
+                {room.roomKind === "chaotic" ? CHAOTIC_MAX_PLAYERS : 2}
+              </p>
+              {room.roomKind === "chaotic" && room.status === "waiting" && room.hostId === profile?.sessionId && (
+                <p>
+                  <button
+                    type="button"
+                    className="primary"
+                    disabled={room.players.length < 2}
+                    onClick={() => void beginChaoticMatch()}
+                  >
+                    Start chaotic match (≥2 players on one grid)
+                  </button>
+                </p>
+              )}
               <ul>
                 {room.players.map((player) => (
                   <li key={player.id}>

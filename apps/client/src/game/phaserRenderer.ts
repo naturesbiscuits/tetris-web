@@ -14,7 +14,15 @@ const COLORS: Record<number, number> = {
   8: 0x6b7280
 };
 
-type SnapshotGetter = () => FrameSnapshot;
+const CHAOTIC_PLAYER_COLORS = [0xf472b6, 0x34d399, 0x60a5fa, 0xfbbf24, 0xc084fc, 0xfb923c, 0x2dd4bf, 0xf87171];
+
+function chaoticPlayerColor(playerId: string, index: number): number {
+  let h = 0;
+  for (let i = 0; i < playerId.length; i += 1) {
+    h = (h * 31 + playerId.charCodeAt(i)) >>> 0;
+  }
+  return CHAOTIC_PLAYER_COLORS[(h + index) % CHAOTIC_PLAYER_COLORS.length]!;
+}
 
 function drawBoard(
   graphics: Phaser.GameObjects.Graphics,
@@ -39,7 +47,8 @@ function drawPiece(
   xOffset: number,
   yOffset: number,
   cellSize: number,
-  alpha = 1
+  alpha = 1,
+  fillColorOverride?: number
 ): void {
   const hiddenRows = BOARD_HEIGHT - VISIBLE_HEIGHT;
   const pieceState = {
@@ -50,13 +59,15 @@ function drawPiece(
   };
   const cells = getCells(pieceState);
   const valueByType: Record<PieceType, number> = { I: 1, O: 2, T: 3, S: 4, Z: 5, J: 6, L: 7 };
-  const fillColor = COLORS[valueByType[piece.type]];
+  const fillColor = fillColorOverride ?? COLORS[valueByType[piece.type]];
   graphics.fillStyle(fillColor, alpha);
   for (const [x, y] of cells) {
     if (y < hiddenRows || y >= BOARD_HEIGHT) continue;
     graphics.fillRect(xOffset + x * cellSize, yOffset + (y - hiddenRows) * cellSize, cellSize - 1, cellSize - 1);
   }
 }
+
+type SnapshotGetter = () => FrameSnapshot;
 
 export function createPhaserGame(container: HTMLDivElement, getSnapshot: SnapshotGetter): Phaser.Game {
   class MainScene extends Phaser.Scene {
@@ -83,6 +94,26 @@ export function createPhaserGame(container: HTMLDivElement, getSnapshot: Snapsho
 
       this.graphics.fillStyle(0x0f1220, 1);
       this.graphics.fillRect(0, 0, 520, 460);
+
+      if (snapshot.mode === "chaotic" && snapshot.chaotic) {
+        const cx = 120;
+        const chaoticCell = 20;
+        drawBoard(this.graphics, snapshot.chaotic.board, cx, 40, chaoticCell);
+        snapshot.chaotic.players.forEach((p, idx) => {
+          if (!p.active) return;
+          const hue = chaoticPlayerColor(p.playerId, idx);
+          drawPiece(this.graphics, p.active, cx, 40, chaoticCell, 1, hue);
+          if (p.isLocal) {
+            drawPiece(this.graphics, { ...p.active, y: p.ghostY }, cx, 40, chaoticCell, 0.22, hue);
+          }
+        });
+        this.youLabel.setText("CHAOTIC CO-OP — SHARED GRID");
+        this.oppLabel.setText(`${snapshot.chaotic.players.length} players`);
+        this.statusLabel.setText(
+          `${snapshot.statusLabel} | TEAM LINES ${snapshot.chaotic.lines} | TEAM SCORE ${snapshot.chaotic.score}`
+        );
+        return;
+      }
 
       drawBoard(this.graphics, snapshot.you.board, 24, 42, cellSize);
       drawPiece(this.graphics, snapshot.you.active, 24, 42, cellSize, 1);

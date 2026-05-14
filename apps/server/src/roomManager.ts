@@ -41,7 +41,7 @@ function defaultNickname(): string {
 }
 
 function toRoomPlayer(player: ConnectedPlayer): RoomPlayer {
-  return { id: player.socketId, nickname: player.nickname, isHost: player.isHost };
+  return { id: player.socketId, nickname: player.nickname, isHost: player.isHost, connected: true };
 }
 
 function toRoomSnapshot(room: RoomState): RoomSnapshot {
@@ -49,7 +49,8 @@ function toRoomSnapshot(room: RoomState): RoomSnapshot {
     roomCode: room.roomCode,
     status: room.status,
     hostId: room.hostId,
-    players: room.players.map(toRoomPlayer)
+    players: room.players.map(toRoomPlayer),
+    roomKind: "versus"
   };
 }
 

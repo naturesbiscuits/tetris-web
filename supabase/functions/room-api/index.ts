@@ -1,13 +1,23 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { corsHeaders } from "../_shared/cors.ts";
 
+type RoomKind = "versus" | "chaotic";
+
 type RoomStatus = "waiting" | "running" | "finished";
 
 interface RoomApiRequest {
-  action: "ensure_profile" | "create_room" | "join_room" | "leave_room" | "report_game_over" | "get_room";
+  action:
+    | "ensure_profile"
+    | "create_room"
+    | "join_room"
+    | "leave_room"
+    | "report_game_over"
+    | "get_room"
+    | "start_chaotic_match";
   sessionId: string;
   nickname?: string;
   roomCode?: string;
+  roomKind?: RoomKind;
 }
 
 interface RoomPlayer {
@@ -22,7 +32,10 @@ interface RoomSnapshot {
   status: RoomStatus;
   hostId: string;
   players: RoomPlayer[];
+  roomKind: RoomKind;
 }
+
+const CHAOTIC_MAX_PLAYERS = 16;
 
 const supabase = createClient(
   Deno.env.get("SUPABASE_URL") ?? "",
@@ -94,7 +107,7 @@ async function deleteStaleWaitingRooms(): Promise<void> {
   const cutoffIso = new Date(Date.now() - 30_000).toISOString();
   const { data: staleRooms, error: listError } = await supabase
     .from("multiplayer_rooms")
-    .select("room_code")
+    .select("room_code, room_kind")
     .eq("status", "waiting")
     .lt("created_at", cutoffIso);
   if (listError) {
@@ -102,6 +115,9 @@ async function deleteStaleWaitingRooms(): Promise<void> {
     return;
   }
   for (const row of staleRooms ?? []) {
+    if ((row.room_kind as string | undefined) === "chaotic") {
+      continue;
+    }
     const code = row.room_code as string;
     const { count, error: countError } = await supabase
       .from("multiplayer_room_players")
@@ -132,7 +148,7 @@ async function upsertProfile(sessionId: string, nickname?: string) {
 async function getRoomSnapshot(roomCode: string): Promise<RoomSnapshot | null> {
   const { data: room, error: roomError } = await supabase
     .from("multiplayer_rooms")
-    .select("room_code, status, host_session_id")
+    .select("room_code, status, host_session_id, room_kind")
     .eq("room_code", roomCode)
     .maybeSingle();
 
@@ -151,6 +167,7 @@ async function getRoomSnapshot(roomCode: string): Promise<RoomSnapshot | null> {
     roomCode: room.room_code,
     status: room.status as RoomStatus,
     hostId: room.host_session_id,
+    roomKind: ((room.room_kind as RoomKind | null | undefined) ?? "versus") as RoomKind,
     players: (players ?? []).map((player) => ({
       id: player.session_id,
       nickname: player.nickname,
@@ -160,7 +177,7 @@ async function getRoomSnapshot(roomCode: string): Promise<RoomSnapshot | null> {
   };
 }
 
-async function createRoom(sessionId: string, nickname?: string) {
+async function createRoom(sessionId: string, nickname?: string, roomKind: RoomKind = "versus") {
   await deleteStaleWaitingRooms();
   const profile = await upsertProfile(sessionId, nickname);
   let roomCode = randomRoomCode();
@@ -178,7 +195,8 @@ async function createRoom(sessionId: string, nickname?: string) {
   const { error: roomError } = await supabase.from("multiplayer_rooms").insert({
     room_code: roomCode,
     status: "waiting",
-    host_session_id: sessionId
+    host_session_id: sessionId,
+    room_kind: roomKind
   });
   if (roomError) throw roomError;
 
@@ -204,7 +222,8 @@ async function joinRoom(sessionId: string, nickname?: string, roomCode?: string)
 
   const existingPlayer = snapshot.players.find((player) => player.id === sessionId);
   if (!existingPlayer) {
-    if (snapshot.players.length >= 2) throw new Error("Room is full");
+    const cap = snapshot.roomKind === "chaotic" ? CHAOTIC_MAX_PLAYERS : 2;
+    if (snapshot.players.length >= cap) throw new Error("Room is full");
     let chosenNickname = profile.nickname;
     let insertError: { code?: string; message?: string } | null = null;
     for (let attempt = 0; attempt < 6; attempt += 1) {
@@ -240,7 +259,11 @@ async function joinRoom(sessionId: string, nickname?: string, roomCode?: string)
     }
   }
 
-  const nextStatus: RoomStatus = snapshot.players.length + (existingPlayer ? 0 : 1) >= 2 ? "running" : snapshot.status;
+  const newCount = snapshot.players.length + (existingPlayer ? 0 : 1);
+  let nextStatus: RoomStatus = snapshot.status;
+  if (snapshot.roomKind === "versus" && newCount >= 2) {
+    nextStatus = "running";
+  }
   const { error: statusError } = await supabase
     .from("multiplayer_rooms")
     .update({ status: nextStatus, updated_at: new Date().toISOString() })
@@ -269,7 +292,7 @@ async function leaveRoom(sessionId: string, roomCode?: string) {
 
   const nextHost = snapshot.players[0];
   const status: RoomStatus = snapshot.status === "running" && snapshot.players.length < 2 ? "finished" : snapshot.status;
-  const winnerId = status === "finished" ? nextHost.id : null;
+  const winnerId = status === "finished" && snapshot.roomKind === "versus" ? nextHost.id : null;
 
   await supabase
     .from("multiplayer_rooms")
@@ -297,7 +320,8 @@ async function reportGameOver(sessionId: string, roomCode?: string) {
   const snapshot = await getRoomSnapshot(normalizedCode);
   if (!snapshot) throw new Error("Room not found");
 
-  const winnerId = snapshot.players.find((player) => player.id !== sessionId)?.id ?? null;
+  const winnerId =
+    snapshot.roomKind === "chaotic" ? null : (snapshot.players.find((player) => player.id !== sessionId)?.id ?? null);
   const { error } = await supabase
     .from("multiplayer_rooms")
     .update({
@@ -308,6 +332,23 @@ async function reportGameOver(sessionId: string, roomCode?: string) {
     .eq("room_code", normalizedCode);
   if (error) throw error;
   return winnerId;
+}
+
+async function startChaoticMatch(sessionId: string, roomCode?: string) {
+  if (!roomCode) throw new Error("Room code required");
+  const normalizedCode = roomCode.trim().toUpperCase();
+  const snapshot = await getRoomSnapshot(normalizedCode);
+  if (!snapshot) throw new Error("Room not found");
+  if (snapshot.roomKind !== "chaotic") throw new Error("Not a chaotic co-op room");
+  if (snapshot.hostId !== sessionId) throw new Error("Only the host can start the match");
+  if (snapshot.players.length < 2) throw new Error("Need at least two players");
+  if (snapshot.status !== "waiting") throw new Error("Match already started or finished");
+  const { error } = await supabase
+    .from("multiplayer_rooms")
+    .update({ status: "running", updated_at: new Date().toISOString() })
+    .eq("room_code", normalizedCode);
+  if (error) throw error;
+  return getRoomSnapshot(normalizedCode);
 }
 
 Deno.serve(async (request) => {
@@ -327,7 +368,8 @@ Deno.serve(async (request) => {
         return json(200, { profile });
       }
       case "create_room": {
-        const room = await createRoom(body.sessionId, body.nickname);
+        const rk: RoomKind = body.roomKind === "chaotic" ? "chaotic" : "versus";
+        const room = await createRoom(body.sessionId, body.nickname, rk);
         return json(200, { room });
       }
       case "join_room": {
@@ -344,6 +386,10 @@ Deno.serve(async (request) => {
       }
       case "get_room": {
         const room = await getRoomSnapshot((body.roomCode ?? "").trim().toUpperCase());
+        return json(200, { room });
+      }
+      case "start_chaotic_match": {
+        const room = await startChaoticMatch(body.sessionId, body.roomCode);
         return json(200, { room });
       }
       default:

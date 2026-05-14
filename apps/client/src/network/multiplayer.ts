@@ -48,11 +48,23 @@ export async function ensureProfile(sessionId?: string, nickname?: string): Prom
   return data.profile;
 }
 
-export async function createRoom(profile: ClientProfile): Promise<RoomSnapshot> {
+export async function createRoom(
+  profile: ClientProfile,
+  roomKind: "versus" | "chaotic" = "versus"
+): Promise<RoomSnapshot> {
   return requireRoomResponse({
     action: "create_room",
     sessionId: profile.sessionId,
-    nickname: profile.nickname
+    nickname: profile.nickname,
+    roomKind
+  });
+}
+
+export async function startChaoticMatch(profile: ClientProfile, roomCode: string): Promise<RoomSnapshot> {
+  return requireRoomResponse({
+    action: "start_chaotic_match",
+    sessionId: profile.sessionId,
+    roomCode
   });
 }
 
