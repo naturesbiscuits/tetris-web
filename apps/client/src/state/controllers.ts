@@ -4,6 +4,7 @@ import {
   ChaoticSharedBoardEngine,
   PlayerEngine,
   getCells,
+  type ChaoticBoardSyncPayload,
   type ChaoticSyncPayload,
   type InputKind,
   type MultiplayerEventPacket,
@@ -193,7 +194,8 @@ function guestGhostY(board: Uint8Array, piece: PieceState): number {
 
 export class ChaoticCoopController implements GameController {
   private readonly engine: ChaoticSharedBoardEngine | null;
-  private guestMirror: ChaoticSyncPayload | null = null;
+  private guestChaoticBoard: ChaoticBoardSyncPayload | null = null;
+  private guestLocalLivePiece: PieceState | null = null;
   private readonly isHost: boolean;
   private readonly localPlayerId: string;
   private readonly roster: RoomPlayer[];
@@ -220,10 +222,7 @@ export class ChaoticCoopController implements GameController {
       if (this.isHost && this.engine) {
         this.engine.stepFrame();
         if (this.tick % 2 === 0 || this.engine.teamGameOver()) {
-          void this.sendEvent({
-            type: "chaotic_sync",
-            chaoticSync: this.engine.buildSyncPayload()
-          });
+          this.publishChaoticNetworkState();
         }
         if (this.engine.teamGameOver() && !this.announcedGameOver) {
           this.announcedGameOver = true;
@@ -232,11 +231,28 @@ export class ChaoticCoopController implements GameController {
       }
     }, 1000 / 60);
     if (this.isHost && this.engine) {
-      void this.sendEvent({
-        type: "chaotic_sync",
-        chaoticSync: this.engine.buildSyncPayload()
-      });
+      this.publishChaoticNetworkState();
     }
+  }
+
+  /** Host: one board snapshot plus one small message per player (guests only apply their own piece). */
+  private publishChaoticNetworkState(): void {
+    if (!this.engine) return;
+    const full = this.engine.buildSyncPayload();
+    void this.sendEvent({
+      type: "chaotic_board_sync",
+      chaoticBoard: {
+        board: full.board,
+        lines: full.lines,
+        score: full.score,
+        tick: full.tick,
+        gameOver: full.gameOver
+      }
+    });
+    void this.sendEvent({
+      type: "chaotic_pieces_sync",
+      chaoticPieces: { actives: full.actives }
+    });
   }
 
   stop(): void {
@@ -274,21 +290,54 @@ export class ChaoticCoopController implements GameController {
     this.engine.applyInput(event.playerId, event.inputKind);
   }
 
-  /** Non-host: merge authoritative host state. */
+  /** Non-host: merge authoritative host board state. */
+  applyChaoticBoardSync(event: MultiplayerEventPacket): void {
+    if (this.isHost) return;
+    if (event.type !== "chaotic_board_sync" || !event.chaoticBoard) return;
+    this.guestChaoticBoard = event.chaoticBoard;
+    if (event.chaoticBoard.gameOver) {
+      this.announcedGameOver = true;
+    }
+  }
+
+  /** Non-host: apply only this client's falling piece from the batch (locked cells are on the board). */
+  applyChaoticPiecesSync(event: MultiplayerEventPacket): void {
+    if (this.isHost) return;
+    if (event.type !== "chaotic_pieces_sync" || !event.chaoticPieces) return;
+    this.guestLocalLivePiece = event.chaoticPieces.actives[this.localPlayerId] ?? null;
+  }
+
+  /** Legacy full snapshot (still supported if received). */
   applyChaoticSync(event: MultiplayerEventPacket): void {
     if (this.isHost) return;
     if (event.type !== "chaotic_sync" || !event.chaoticSync) return;
-    this.guestMirror = event.chaoticSync;
-    if (event.chaoticSync.gameOver) {
+    const s = event.chaoticSync;
+    this.guestChaoticBoard = {
+      board: s.board,
+      lines: s.lines,
+      score: s.score,
+      tick: s.tick,
+      gameOver: s.gameOver
+    };
+    this.guestLocalLivePiece = s.actives[this.localPlayerId] ?? null;
+    if (s.gameOver) {
       this.announcedGameOver = true;
     }
+  }
+
+  private guestChaoticView(): ChaoticSyncPayload | null {
+    if (!this.guestChaoticBoard) return null;
+    return {
+      ...this.guestChaoticBoard,
+      actives: { [this.localPlayerId]: this.guestLocalLivePiece }
+    };
   }
 
   private buildChaoticFrame(sync: ChaoticSyncPayload): ChaoticFrameState {
     const board = new Uint8Array(sync.board.length);
     board.set(sync.board);
     const players = this.roster.map((p) => {
-      const active = sync.actives[p.id] ?? null;
+      const active = p.id === this.localPlayerId ? (sync.actives[p.id] ?? null) : null;
       const ghostY =
         active && p.id === this.localPlayerId
           ? this.isHost && this.engine
@@ -324,7 +373,7 @@ export class ChaoticCoopController implements GameController {
   }
 
   getFrame(): FrameSnapshot {
-    const sync = this.isHost && this.engine ? this.engine.buildSyncPayload() : this.guestMirror;
+    const sync = this.isHost && this.engine ? this.engine.buildSyncPayload() : this.guestChaoticView();
     const statusLabel = sync?.gameOver ? "TEAM GAME OVER" : `CHAOTIC CO-OP (${this.roster.length} players)`;
     return {
       mode: "chaotic",

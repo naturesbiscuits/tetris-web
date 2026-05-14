@@ -3,10 +3,10 @@ export const BOARD_HEIGHT = 22;
 export const VISIBLE_HEIGHT = 20;
 
 /** Chaotic co-op: wider, taller shared playfield (solo / 1v1 still use {@link BOARD_WIDTH} / {@link BOARD_HEIGHT}). */
-export const CHAOTIC_BOARD_WIDTH = 18;
-export const CHAOTIC_BOARD_HEIGHT = 32;
+export const CHAOTIC_BOARD_WIDTH = 26;
+export const CHAOTIC_BOARD_HEIGHT = 40;
 /** Rows shown above the vanish zone (two hidden rows at top, same pattern as standard). */
-export const CHAOTIC_VISIBLE_HEIGHT = 30;
+export const CHAOTIC_VISIBLE_HEIGHT = 38;
 export const TICKS_PER_SECOND = 60;
 
 export const INPUT_DELAY_TICKS = 2;

@@ -180,7 +180,7 @@ button:hover {
 }
 
 .game-canvas {
-  width: min(100%, 520px);
+  width: min(100%, 960px);
 }
 
 .game-canvas canvas {

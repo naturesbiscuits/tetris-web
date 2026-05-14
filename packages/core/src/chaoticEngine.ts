@@ -5,7 +5,7 @@ import {
   SCORE_LINE_CLEAR,
   SCORE_SOFT_DROP
 } from "./constants.js";
-import type { ChaoticSyncPayload } from "./protocol.js";
+import type { ChaoticBoardSyncPayload, ChaoticSyncPayload } from "./protocol.js";
 import { getCells, getKickTests, PIECE_ORDER, PIECE_TO_CELL } from "./pieces.js";
 import { DeterministicRng } from "./random.js";
 import type { InputKind, PieceState, PieceType } from "./types.js";
@@ -358,6 +358,16 @@ export class ChaoticSharedBoardEngine {
     return [...this.players.values()].every((p) => !p.alive);
   }
 
+  buildBoardSyncPayload(): ChaoticBoardSyncPayload {
+    return {
+      board: [...this.board],
+      lines: this.lines,
+      score: this.score,
+      tick: this.simTick,
+      gameOver: this.teamGameOver()
+    };
+  }
+
   buildSyncPayload(): ChaoticSyncPayload {
     const actives: ChaoticSyncPayload["actives"] = {};
     for (const id of this.orderedPlayerIds) {
@@ -369,12 +379,8 @@ export class ChaoticSharedBoardEngine {
       }
     }
     return {
-      board: [...this.board],
-      actives,
-      lines: this.lines,
-      score: this.score,
-      tick: this.simTick,
-      gameOver: this.teamGameOver()
+      ...this.buildBoardSyncPayload(),
+      actives
     };
   }
 

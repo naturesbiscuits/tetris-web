@@ -1,4 +1,4 @@
-import type { InputKind, PieceType } from "./types.js";
+import type { InputKind, PieceState, PieceType } from "./types.js";
 
 export interface ClientProfile {
   sessionId: string;
@@ -31,7 +31,9 @@ export type MultiplayerEventType =
   | "game_over"
   | "winner_declared"
   | "chaotic_input"
-  | "chaotic_sync";
+  | "chaotic_sync"
+  | "chaotic_board_sync"
+  | "chaotic_pieces_sync";
 
 /** Authoritative shared-grid state broadcast by the room host (chaotic co-op). */
 export interface ChaoticSyncPayload {
@@ -41,6 +43,20 @@ export interface ChaoticSyncPayload {
   score: number;
   tick: number;
   gameOver: boolean;
+}
+
+/** Shared grid only (locked cells + score); live pieces arrive via {@link ChaoticPiecesSyncPayload}. */
+export interface ChaoticBoardSyncPayload {
+  board: number[];
+  lines: number;
+  score: number;
+  tick: number;
+  gameOver: boolean;
+}
+
+/** All players' live pieces in one message; clients should only apply `actives[theirSessionId]`. */
+export interface ChaoticPiecesSyncPayload {
+  actives: Record<string, PieceState | null>;
 }
 
 export interface MultiplayerEventPacket {
@@ -57,6 +73,10 @@ export interface MultiplayerEventPacket {
   inputKind?: InputKind;
   /** When type === "chaotic_sync": full shared-board snapshot for guests. */
   chaoticSync?: ChaoticSyncPayload;
+  /** When type === "chaotic_board_sync": locked grid + team stats (no live pieces). */
+  chaoticBoard?: ChaoticBoardSyncPayload;
+  /** When type === "chaotic_pieces_sync": falling pieces (guests should only use their own id). */
+  chaoticPieces?: ChaoticPiecesSyncPayload;
 }
 
 export interface RoomApiRequest {

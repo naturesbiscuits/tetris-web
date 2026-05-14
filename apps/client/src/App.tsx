@@ -21,7 +21,7 @@ function canStartVersusMatch(room: RoomSnapshot | null): room is RoomSnapshot {
 }
 
 function canStartChaoticMatch(room: RoomSnapshot | null): room is RoomSnapshot {
-  return !!room && room.roomKind === "chaotic" && room.status === "running" && room.players.length >= 2;
+  return !!room && room.roomKind === "chaotic" && room.status === "running" && room.players.length >= 1;
 }
 
 export default function App(): JSX.Element {
@@ -131,6 +131,12 @@ export default function App(): JSX.Element {
         if (controller instanceof ChaoticCoopController) {
           if (event.type === "chaotic_input") {
             controller.handleRemoteChaoticInput(event);
+          }
+          if (event.type === "chaotic_board_sync") {
+            controller.applyChaoticBoardSync(event);
+          }
+          if (event.type === "chaotic_pieces_sync") {
+            controller.applyChaoticPiecesSync(event);
           }
           if (event.type === "chaotic_sync") {
             controller.applyChaoticSync(event);
@@ -339,13 +345,8 @@ export default function App(): JSX.Element {
               </p>
               {room.roomKind === "chaotic" && room.status === "waiting" && room.hostId === profile?.sessionId && (
                 <p>
-                  <button
-                    type="button"
-                    className="primary"
-                    disabled={room.players.length < 2}
-                    onClick={() => void beginChaoticMatch()}
-                  >
-                    Start chaotic match (≥2 players on one grid)
+                  <button type="button" className="primary" onClick={() => void beginChaoticMatch()}>
+                    Start chaotic match (host starts when ready)
                   </button>
                 </p>
               )}

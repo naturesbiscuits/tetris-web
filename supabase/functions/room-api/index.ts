@@ -340,7 +340,6 @@ async function startChaoticMatch(sessionId: string, roomCode?: string) {
   if (!snapshot) throw new Error("Room not found");
   if (snapshot.roomKind !== "chaotic") throw new Error("Not a chaotic co-op room");
   if (snapshot.hostId !== sessionId) throw new Error("Only the host can start the match");
-  if (snapshot.players.length < 2) throw new Error("Need at least two players");
   if (snapshot.status !== "waiting") throw new Error("Match already started or finished");
   const { error } = await supabase
     .from("multiplayer_rooms")

@@ -113,7 +113,7 @@ export function createPhaserGame(container: HTMLDivElement, getSnapshot: Snapsho
       this.graphics = this.add.graphics();
       this.youLabel = this.add.text(28, 14, "YOU", { color: "#f8fafc", fontFamily: "Verdana", fontSize: "18px" });
       this.oppLabel = this.add.text(272, 14, "OPPONENT", { color: "#f8fafc", fontFamily: "Verdana", fontSize: "18px" });
-      this.statusLabel = this.add.text(28, 420, "", { color: "#f8fafc", fontFamily: "Verdana", fontSize: "16px" });
+      this.statusLabel = this.add.text(28, 662, "", { color: "#f8fafc", fontFamily: "Verdana", fontSize: "16px" });
     }
 
     update(): void {
@@ -122,24 +122,24 @@ export function createPhaserGame(container: HTMLDivElement, getSnapshot: Snapsho
       this.graphics.clear();
 
       this.graphics.fillStyle(0x0f1220, 1);
-      this.graphics.fillRect(0, 0, 520, 460);
+      this.graphics.fillRect(0, 0, 960, 700);
 
       if (snapshot.mode === "chaotic" && snapshot.chaotic) {
+        const maxBoardW = 920;
+        const maxBoardH = 600;
         const chaoticCell = Math.max(
-          11,
-          Math.min(Math.floor((500 - 24) / CHAOTIC_GRID.width), Math.floor(380 / CHAOTIC_GRID.visibleHeight))
+          10,
+          Math.min(Math.floor(maxBoardW / CHAOTIC_GRID.width), Math.floor(maxBoardH / CHAOTIC_GRID.visibleHeight))
         );
         const cw = CHAOTIC_GRID.width * chaoticCell;
-        const cx = (520 - cw) / 2;
-        const cy = 40;
+        const cx = (960 - cw) / 2;
+        const cy = 36;
         drawBoard(this.graphics, snapshot.chaotic.board, cx, cy, chaoticCell, CHAOTIC_GRID);
         snapshot.chaotic.players.forEach((p, idx) => {
-          if (!p.active) return;
+          if (!p.isLocal || !p.active) return;
           const hue = chaoticPlayerColor(p.playerId, idx);
           drawPiece(this.graphics, p.active, cx, cy, chaoticCell, 1, hue, CHAOTIC_GRID);
-          if (p.isLocal) {
-            drawPiece(this.graphics, { ...p.active, y: p.ghostY }, cx, cy, chaoticCell, 0.22, hue, CHAOTIC_GRID);
-          }
+          drawPiece(this.graphics, { ...p.active, y: p.ghostY }, cx, cy, chaoticCell, 0.22, hue, CHAOTIC_GRID);
         });
         this.youLabel.setText("CHAOTIC CO-OP — SHARED GRID");
         this.oppLabel.setText(`${snapshot.chaotic.players.length} players`);
@@ -181,8 +181,8 @@ export function createPhaserGame(container: HTMLDivElement, getSnapshot: Snapsho
 
   return new Phaser.Game({
     type: Phaser.AUTO,
-    width: 520,
-    height: 460,
+    width: 960,
+    height: 700,
     parent: container,
     backgroundColor: "#0f1220",
     scene: MainScene,
