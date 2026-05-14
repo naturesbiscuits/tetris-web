@@ -129,6 +129,25 @@ export default function App(): JSX.Element {
     }
   };
 
+  const newGuestSession = async () => {
+    localStorage.removeItem("tetris.sessionId");
+    localStorage.removeItem("tetris.nickname");
+    setNicknameDraft("");
+    setProfile(null);
+    setTransportState("CONNECTING");
+    try {
+      const nextProfile = await ensureProfile(undefined, undefined);
+      setProfile(nextProfile);
+      setNicknameDraft(nextProfile.nickname);
+      localStorage.setItem("tetris.sessionId", nextProfile.sessionId);
+      localStorage.setItem("tetris.nickname", nextProfile.nickname);
+      setTransportState("ONLINE");
+    } catch (err) {
+      setTransportState("ERROR");
+      showError(err instanceof Error ? err.message : "Unable to create guest session");
+    }
+  };
+
   const startSolo = () => {
     const controller = new SoloController(profile?.nickname || "Guest");
     controller.start();
@@ -152,6 +171,19 @@ export default function App(): JSX.Element {
     if (!profile) return;
     try {
       const snapshot = await joinRoom(profile, joinCode.trim().toUpperCase());
+      if (
+        snapshot.players.length === 1 &&
+        snapshot.players[0]?.id === profile.sessionId &&
+        snapshot.players[0].isHost
+      ) {
+        showError(
+          "That room code is yours already (same browser session). For a second player, open a private/incognito window or click New guest session, then join again."
+        );
+        setRoom(snapshot);
+        await connectToRoom(snapshot);
+        setMode("lobby");
+        return;
+      }
       setRoom(snapshot);
       await connectToRoom(snapshot);
       setMode("lobby");
@@ -205,6 +237,9 @@ export default function App(): JSX.Element {
             <div className="inline">
               <input value={nicknameDraft} onChange={(e) => setNicknameDraft(e.target.value)} maxLength={20} />
               <button onClick={() => void saveNickname()}>Save</button>
+              <button type="button" onClick={() => void newGuestSession()} title="New random session for a second player on this PC">
+                New guest session
+              </button>
             </div>
           </label>
 

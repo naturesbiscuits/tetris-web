@@ -39,11 +39,15 @@ function json(status: number, body: unknown): Response {
   });
 }
 
+function randomSuffix(): string {
+  return crypto.randomUUID().replace(/-/g, "").slice(0, 10);
+}
+
 function normalizeNickname(nickname?: string): string {
   const trimmed = (nickname ?? "").trim().slice(0, 20);
   if (trimmed) return trimmed;
   const prefix = ["Player", "Guest", "TetriUser"][Math.floor(Math.random() * 3)];
-  return `${prefix}_${Math.floor(100 + Math.random() * 9900)}`;
+  return `${prefix}_${randomSuffix()}`;
 }
 
 function isUniqueNicknameViolation(error: { code?: string; message?: string }): boolean {
@@ -57,6 +61,32 @@ function randomRoomCode(): string {
     out += chars[Math.floor(Math.random() * chars.length)];
   }
   return out;
+}
+
+/** Waiting rooms with only the host and no activity for 30s are removed to keep the DB small. */
+async function deleteStaleWaitingRooms(): Promise<void> {
+  const cutoffIso = new Date(Date.now() - 30_000).toISOString();
+  const { data: staleRooms, error: listError } = await supabase
+    .from("multiplayer_rooms")
+    .select("room_code")
+    .eq("status", "waiting")
+    .lt("created_at", cutoffIso);
+  if (listError) {
+    console.error("deleteStaleWaitingRooms list", listError);
+    return;
+  }
+  for (const row of staleRooms ?? []) {
+    const code = row.room_code as string;
+    const { count, error: countError } = await supabase
+      .from("multiplayer_room_players")
+      .select("*", { head: true, count: "exact" })
+      .eq("room_code", code);
+    if (countError) continue;
+    if ((count ?? 0) < 2) {
+      const { error: delError } = await supabase.from("multiplayer_rooms").delete().eq("room_code", code);
+      if (delError) console.error("deleteStaleWaitingRooms delete", delError);
+    }
+  }
 }
 
 async function upsertProfile(sessionId: string, nickname?: string) {
@@ -105,6 +135,7 @@ async function getRoomSnapshot(roomCode: string): Promise<RoomSnapshot | null> {
 }
 
 async function createRoom(sessionId: string, nickname?: string) {
+  await deleteStaleWaitingRooms();
   const profile = await upsertProfile(sessionId, nickname);
   let roomCode = randomRoomCode();
 
@@ -138,6 +169,7 @@ async function createRoom(sessionId: string, nickname?: string) {
 
 async function joinRoom(sessionId: string, nickname?: string, roomCode?: string) {
   if (!roomCode) throw new Error("Room code required");
+  await deleteStaleWaitingRooms();
   const profile = await upsertProfile(sessionId, nickname);
   const normalizedCode = roomCode.trim().toUpperCase();
   const snapshot = await getRoomSnapshot(normalizedCode);
@@ -147,17 +179,38 @@ async function joinRoom(sessionId: string, nickname?: string, roomCode?: string)
   const existingPlayer = snapshot.players.find((player) => player.id === sessionId);
   if (!existingPlayer) {
     if (snapshot.players.length >= 2) throw new Error("Room is full");
-    const { error: insertError } = await supabase.from("multiplayer_room_players").insert({
-      room_code: normalizedCode,
-      session_id: sessionId,
-      nickname: profile.nickname,
-      is_host: false
-    });
-    if (insertError) {
-      if (isUniqueNicknameViolation(insertError)) {
-        throw new Error("That name is already taken in this room");
+    let chosenNickname = profile.nickname;
+    let insertError: { code?: string; message?: string } | null = null;
+    for (let attempt = 0; attempt < 6; attempt += 1) {
+      const { error } = await supabase.from("multiplayer_room_players").insert({
+        room_code: normalizedCode,
+        session_id: sessionId,
+        nickname: chosenNickname,
+        is_host: false
+      });
+      if (!error) {
+        insertError = null;
+        if (chosenNickname !== profile.nickname) {
+          await supabase.from("player_profiles").upsert(
+            {
+              session_id: sessionId,
+              nickname: chosenNickname,
+              updated_at: new Date().toISOString()
+            },
+            { onConflict: "session_id" }
+          );
+        }
+        break;
       }
-      throw insertError;
+      insertError = error;
+      if (isUniqueNicknameViolation(error)) {
+        chosenNickname = `${profile.nickname.slice(0, 12)}_${randomSuffix()}`.slice(0, 20);
+        continue;
+      }
+      throw error;
+    }
+    if (insertError) {
+      throw new Error("That name is already taken in this room");
     }
   }
 

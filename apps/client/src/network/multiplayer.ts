@@ -28,7 +28,8 @@ function roomApiErrorMessage(error: { message: string } | null, data: RoomApiRes
 
 function randomNickname(): string {
   const prefix = ["Player", "Guest", "TetriUser"][Math.floor(Math.random() * 3)];
-  return `${prefix}_${Math.floor(100 + Math.random() * 9900)}`;
+  const suffix = crypto.randomUUID().replace(/-/g, "").slice(0, 10);
+  return `${prefix}_${suffix}`;
 }
 
 function randomSessionId(): string {
@@ -111,13 +112,19 @@ async function requireRoomResponse(request: RoomApiRequest): Promise<RoomSnapsho
   return data.room;
 }
 
-function markConnectedPlayers(room: RoomSnapshot, presenceState: Record<string, PresencePlayerState[]>): RoomSnapshot {
+function markConnectedPlayers(
+  room: RoomSnapshot,
+  presenceState: Record<string, PresencePlayerState[]>,
+  localSessionId: string
+): RoomSnapshot {
   const connectedIds = new Set<string>();
   for (const metas of Object.values(presenceState)) {
     for (const meta of metas) {
       if (meta?.sessionId) connectedIds.add(meta.sessionId);
     }
   }
+  // Subscribed client is connected even if a presence diff is slightly delayed.
+  connectedIds.add(localSessionId);
   return {
     ...room,
     players: room.players.map((player) => ({
@@ -136,6 +143,8 @@ export interface RoomSubscriptionHandlers {
 
 export class SupabaseRoomSession {
   private channel: RealtimeChannel | null = null;
+  /** Unique per browser tab so two tabs with the same sessionId do not clobber Realtime presence keys. */
+  private readonly presenceKeyNonce = crypto.randomUUID();
 
   constructor(
     private readonly profile: ClientProfile,
@@ -150,10 +159,26 @@ export class SupabaseRoomSession {
   async connect(): Promise<void> {
     const channel = supabase.channel(`room:${this.room.roomCode}`, {
       config: {
-        presence: { key: this.profile.sessionId },
+        // Must be unique per tab; payload.sessionId is still used for roster ONLINE/OFFLINE.
+        presence: { key: `${this.profile.sessionId}:${this.presenceKeyNonce}` },
         broadcast: { self: false, ack: false }
       }
     });
+
+    const flushPresence = async () => {
+      if (this.channel !== channel) return;
+      const state = channel.presenceState<PresencePlayerState>();
+      this.room = markConnectedPlayers(this.room, state, this.profile.sessionId);
+      try {
+        const refreshed = await getRoom(this.profile, this.room.roomCode);
+        if (refreshed) {
+          this.room = markConnectedPlayers(refreshed, state, this.profile.sessionId);
+        }
+      } catch (error) {
+        this.handlers.onError(error instanceof Error ? error.message : "Unable to sync room");
+      }
+      this.handlers.onRoomSync(this.room);
+    };
 
     channel.on("broadcast", { event: "multiplayer_event" }, ({ payload }) => {
       this.handlers.onMultiplayerEvent(payload as MultiplayerEventPacket);
@@ -164,30 +189,8 @@ export class SupabaseRoomSession {
       this.handlers.onWinner(winnerId);
     });
 
-    channel.on("presence", { event: "sync" }, async () => {
-      const state = channel.presenceState<PresencePlayerState>();
-      this.room = markConnectedPlayers(this.room, state);
-      try {
-        const refreshed = await getRoom(this.profile, this.room.roomCode);
-        if (refreshed) {
-          this.room = markConnectedPlayers(refreshed, state);
-        }
-      } catch (error) {
-        this.handlers.onError(error instanceof Error ? error.message : "Unable to sync room");
-      }
-      this.handlers.onRoomSync(this.room);
-    });
-
-    channel.on("presence", { event: "join" }, async () => {
-      const state = channel.presenceState<PresencePlayerState>();
-      this.room = markConnectedPlayers(this.room, state);
-      this.handlers.onRoomSync(this.room);
-    });
-
-    channel.on("presence", { event: "leave" }, async () => {
-      const state = channel.presenceState<PresencePlayerState>();
-      this.room = markConnectedPlayers(this.room, state);
-      this.handlers.onRoomSync(this.room);
+    channel.on("presence", { event: "sync" }, () => {
+      void flushPresence();
     });
 
     await new Promise<void>((resolve, reject) => {
@@ -198,6 +201,10 @@ export class SupabaseRoomSession {
             nickname: this.profile.nickname,
             roomCode: this.room.roomCode
           } satisfies PresencePlayerState);
+          void flushPresence();
+          queueMicrotask(() => void flushPresence());
+          window.setTimeout(() => void flushPresence(), 120);
+          window.setTimeout(() => void flushPresence(), 600);
           resolve();
         }
         if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {

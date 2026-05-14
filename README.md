@@ -82,6 +82,7 @@ See also [apps/client/.env.example](apps/client/.env.example).
 1. Set the function secret **`SUPABASE_SERVICE_ROLE_KEY`** to your project’s **service role** key (Supabase Dashboard → Project Settings → API; never expose this in `VITE_*` or client code).
 2. Deploy the function from the repo root (CLI logged in and project linked): `npm run functions:deploy` (runs `supabase functions deploy room-api`).
 3. **`verify_jwt`** must be **off** for `room-api` so the browser can call it with only the anon key (this repo’s [supabase/config.toml](supabase/config.toml) has `[functions.room-api] verify_jwt = false`; mirror that for hosted projects when deploying or in Dashboard if your platform exposes it).
+4. The function prunes **`waiting`** rooms older than **30 seconds** with fewer than **two** players (based on `created_at`) whenever someone **creates or joins** a room, so idle lobbies do not pile up in Postgres.
 
 Apply the SQL schema from:
 
