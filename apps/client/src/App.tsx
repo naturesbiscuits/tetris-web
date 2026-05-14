@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { ClientProfile, RoomSnapshot } from "@tetris/core";
 import { ConnectivityProbe } from "./components/ConnectivityProbe";
 import { GameViewport } from "./components/GameViewport";
@@ -24,6 +24,13 @@ function canStartChaoticMatch(room: RoomSnapshot | null): room is RoomSnapshot {
   return !!room && room.roomKind === "chaotic" && room.status === "running" && room.players.length >= 1;
 }
 
+function isChaoticWaitingHost(room: RoomSnapshot, sessionId: string | undefined): boolean {
+  if (!sessionId) return false;
+  if (room.roomKind !== "chaotic" || room.status !== "waiting") return false;
+  if (room.hostId === sessionId) return true;
+  return room.players.some((p) => p.id === sessionId && p.isHost);
+}
+
 export default function App(): JSX.Element {
   const [mode, setMode] = useState<Mode>("menu");
   const [profile, setProfile] = useState<ClientProfile | null>(null);
@@ -35,6 +42,12 @@ export default function App(): JSX.Element {
   const [controllerVersion, setControllerVersion] = useState(0);
   const controllerRef = useRef<GameController | null>(null);
   const roomSessionRef = useRef<SupabaseRoomSession | null>(null);
+  const lobbyStateRef = useRef<{ mode: Mode; profile: ClientProfile | null; room: RoomSnapshot | null }>({
+    mode: "menu",
+    profile: null,
+    room: null
+  });
+  const beginChaoticMatchRef = useRef<() => Promise<void>>(async () => {});
 
   const setController = (next: GameController | null) => {
     controllerRef.current?.stop();
@@ -42,10 +55,10 @@ export default function App(): JSX.Element {
     setControllerVersion((v) => v + 1);
   };
 
-  const showError = (message: string) => {
+  const showError = useCallback((message: string) => {
     setError(message);
     window.setTimeout(() => setError(""), 2600);
-  };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -222,7 +235,7 @@ export default function App(): JSX.Element {
   };
 
   const beginChaoticMatch = async () => {
-    if (!profile || !room || room.roomKind !== "chaotic" || room.hostId !== profile.sessionId) return;
+    if (!profile || !room || room.roomKind !== "chaotic" || !isChaoticWaitingHost(room, profile.sessionId)) return;
     try {
       const next = await startChaoticMatch(profile, room.roomCode);
       setRoom(next);
@@ -231,6 +244,9 @@ export default function App(): JSX.Element {
       showError(err instanceof Error ? err.message : "Unable to start chaotic match");
     }
   };
+
+  beginChaoticMatchRef.current = beginChaoticMatch;
+  lobbyStateRef.current = { mode, profile, room };
 
   const joinGame = async () => {
     if (!profile) return;
@@ -284,6 +300,26 @@ export default function App(): JSX.Element {
     }
   };
 
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.repeat || e.code !== "KeyH") return;
+      const target = e.target as HTMLElement | null;
+      if (target?.closest("input, textarea, select, [contenteditable='true']")) return;
+      const { mode: m, profile: prof, room: r } = lobbyStateRef.current;
+      if (m === "game" || !prof || !r) return;
+      if (!isChaoticWaitingHost(r, prof.sessionId)) return;
+      if (r.players.length < 2) {
+        e.preventDefault();
+        showError("Share the room code so someone joins, then press H to start.");
+        return;
+      }
+      e.preventDefault();
+      void beginChaoticMatchRef.current();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [showError]);
+
   const controller = controllerRef.current;
 
   return (
@@ -333,6 +369,26 @@ export default function App(): JSX.Element {
 
           {room && (
             <div className="room-box">
+              {room.roomKind === "chaotic" && room.status === "waiting" && profile && isChaoticWaitingHost(room, profile.sessionId) && (
+                <div className="chaotic-h-banner" role="status" aria-live="polite">
+                  <span className="chaotic-h-banner-key" aria-hidden="true">
+                    H
+                  </span>
+                  <div className="chaotic-h-banner-copy">
+                    <strong>Press the H key</strong> once at least two people are in this room (you + a guest). It works
+                    anywhere on this page while you are the host.
+                    <span className="chaotic-h-banner-sub">
+                      With two or more people in the room, press <strong>H</strong>. To start alone, use the red button
+                      below.
+                    </span>
+                  </div>
+                </div>
+              )}
+              {room.roomKind === "chaotic" && room.status === "waiting" && profile && !isChaoticWaitingHost(room, profile.sessionId) && (
+                <div className="chaotic-wait-banner" role="status">
+                  Waiting for the <strong>host</strong> to start the match.
+                </div>
+              )}
               <div className="inline">
                 <strong>Room Code: {room.roomCode}</strong>
                 <span style={{ marginLeft: 8 }}>Mode: {room.roomKind === "chaotic" ? "Chaotic co-op" : "1v1"}</span>
@@ -343,7 +399,7 @@ export default function App(): JSX.Element {
                 Connected: {room.players.filter((player) => player.connected).length}
                 {room.roomKind === "versus" ? " / 2 max" : " — unlimited players"}
               </p>
-              {room.roomKind === "chaotic" && room.status === "waiting" && room.hostId === profile?.sessionId && (
+              {room.roomKind === "chaotic" && room.status === "waiting" && profile && isChaoticWaitingHost(room, profile.sessionId) && (
                 <div className="chaotic-start-host">
                   <p className="chaotic-start-host-title">You are the host — start the match when you are ready.</p>
                   <button type="button" className="chaotic-host-start" onClick={() => void beginChaoticMatch()}>

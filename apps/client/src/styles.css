@@ -131,6 +131,62 @@ button:hover {
   font-weight: 600;
 }
 
+.chaotic-h-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  margin-bottom: 14px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  border: 2px solid rgba(252, 165, 165, 0.85);
+  background: linear-gradient(135deg, #7f1d1d 0%, #450a0a 45%, #1c1917 100%);
+  box-shadow: 0 0 24px rgba(220, 38, 38, 0.35);
+}
+
+.chaotic-h-banner-key {
+  flex-shrink: 0;
+  min-width: 3rem;
+  height: 3rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.75rem;
+  font-weight: 900;
+  color: #450a0a;
+  background: #fecaca;
+  border-radius: 10px;
+  border: 3px solid #fff;
+  box-shadow: 0 2px 0 #991b1b;
+}
+
+.chaotic-h-banner-copy {
+  font-size: 1.05rem;
+  line-height: 1.45;
+  color: #fef2f2;
+}
+
+.chaotic-h-banner-copy strong {
+  color: #fff;
+  font-weight: 800;
+}
+
+.chaotic-h-banner-sub {
+  display: block;
+  margin-top: 8px;
+  font-size: 0.92rem;
+  color: #fecaca;
+}
+
+.chaotic-wait-banner {
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--edge);
+  background: #0f172a;
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+
 button.chaotic-host-start {
   width: 100%;
   max-width: 100%;
