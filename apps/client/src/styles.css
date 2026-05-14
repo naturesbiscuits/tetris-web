@@ -166,6 +166,14 @@ button:hover {
   color: var(--muted);
 }
 
+.connectivity-probe__diagnostic {
+  margin: 8px 0 0;
+  font-size: 0.75rem;
+  line-height: 1.35;
+  color: var(--error);
+  word-break: break-word;
+}
+
 .game-shell {
   display: grid;
   gap: 10px;

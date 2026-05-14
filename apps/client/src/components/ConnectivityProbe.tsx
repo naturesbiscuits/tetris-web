@@ -10,9 +10,31 @@ type ConnectivityDisplayRow = {
 export function ConnectivityProbe(): JSX.Element {
   const [n, setN] = useState<number | null>(null);
   const [status, setStatus] = useState<"loading" | "ok" | "error">("loading");
+  const [diagnostic, setDiagnostic] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
+    const url = import.meta.env.VITE_SUPABASE_URL;
+    const anon = import.meta.env.VITE_SUPABASE_ANON_KEY;
+    if (!url?.trim() || !anon?.trim()) {
+      setDiagnostic(
+        "VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY is missing at build time. Set them in Vercel (or .env) and redeploy."
+      );
+      setStatus("error");
+      setN(null);
+      return () => {
+        cancelled = true;
+      };
+    }
+    if (url.includes("placeholder.supabase.co")) {
+      setDiagnostic("Supabase URL is still the placeholder. Set the real project URL in VITE_SUPABASE_URL and redeploy.");
+      setStatus("error");
+      setN(null);
+      return () => {
+        cancelled = true;
+      };
+    }
+
     void supabase
       .schema("public")
       .from("connectivity_display")
@@ -25,15 +47,28 @@ export function ConnectivityProbe(): JSX.Element {
         if (error) {
           setStatus("error");
           setN(null);
+          setDiagnostic(
+            [error.message, error.code ? `(${error.code})` : null].filter(Boolean).join(" ")
+          );
           return;
         }
         if (data?.n == null) {
           setStatus("error");
           setN(null);
+          setDiagnostic(
+            "Query succeeded but no row was returned (often RLS: anon cannot SELECT, or no row with id = 1). Run supabase/fix_connectivity_display_anon.sql in the SQL Editor for this project."
+          );
           return;
         }
+        setDiagnostic(null);
         setN(data.n);
         setStatus("ok");
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return;
+        setStatus("error");
+        setN(null);
+        setDiagnostic(err instanceof Error ? err.message : String(err));
       });
     return () => {
       cancelled = true;
@@ -59,7 +94,7 @@ export function ConnectivityProbe(): JSX.Element {
           </tr>
         </tbody>
       </table>
-      {status === "error" ? <p className="connectivity-probe__hint">Run migration and db push; check RLS / anon key.</p> : null}
+      {status === "error" && diagnostic ? <p className="connectivity-probe__diagnostic">{diagnostic}</p> : null}
     </div>
   );
 }
